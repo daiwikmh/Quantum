@@ -1,3 +1,5 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
 import {
     NavigationMenu,
@@ -137,10 +139,10 @@ function Header1() {
                         <div className="absolute top-20 border-t flex flex-col w-full right-0 bg-background shadow-lg py-4 container gap-8">
                             {navigationItems.map((item) => (
                                 <div key={item.title}>
-                                    <div className="flex flex-col gap-2">
+                                    <div className="flex flex-row gap-2">
                                         {item.href ? (
                                             <Link
-                                                to="/"
+                                                to={"/"}
                                                 className="flex justify-between items-center"
                                             >
                                                 <span className="text-lg">{item.title}</span>
@@ -153,7 +155,7 @@ function Header1() {
                                             item.items.map((subItem) => (
                                                 <Link
                                                     key={subItem.title}
-                                                    to="/"
+                                                   to="/"
                                                     className="flex justify-between items-center"
                                                 >
                                                     <span className="text-muted-foreground">
