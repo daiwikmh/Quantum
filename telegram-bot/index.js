@@ -16,13 +16,14 @@ const node_telegram_bot_api_1 = __importDefault(require("node-telegram-bot-api")
 const dotenv_1 = __importDefault(require("dotenv"));
 const utils_1 = require("./utils");
 const ts_sdk_1 = require("@aptos-labs/ts-sdk");
+const ws_1 = __importDefault(require("ws"));
 // Load environment variables
 dotenv_1.default.config();
 // Constants
-const API_URL = process.env.API_URL || 'https://plutus-move.onrender.com';
+const API_URL = process.env.API_URL || "https://plutus-move.onrender.com";
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
-    console.error('BOT_TOKEN is missing in environment variables');
+    console.error("BOT_TOKEN is missing in environment variables");
     process.exit(1);
 }
 const API_TIMEOUT = 1000000; // 10 seconds timeout for API calls
@@ -33,9 +34,10 @@ class SessionManager {
         this.userMarketSelections = new Map();
         this.userCurrentMarket = new Map();
         this.userWallets = new Map();
+        this.userPrivateKeys = new Map(); // Added to store private keys temporarily
         this.userAmounts = new Map();
         this.userPayloads = new Map();
-        this.userWebSockets = new Map(); // Added to store transaction payloads
+        this.userWebSockets = new Map();
     }
     // State management
     getState(chatId) {
@@ -57,7 +59,14 @@ class SessionManager {
     getCurrentMarket(chatId) {
         return this.userCurrentMarket.get(chatId);
     }
-    // Wallet management
+    // Private key management
+    setPrivateKey(chatId, privateKey) {
+        this.userPrivateKeys.set(chatId, privateKey);
+    }
+    getPrivateKey(chatId) {
+        return this.userPrivateKeys.get(chatId);
+    }
+    // Wallet address management (derived from private key)
     setWallet(chatId, address) {
         this.userWallets.set(chatId, address);
     }
@@ -92,13 +101,18 @@ class SessionManager {
             this.userWebSockets.delete(chatId);
         }
     }
-    // Update resetSession to include WebSocket cleanup
+    // Clear private key after transaction completes
+    clearPrivateKey(chatId) {
+        this.userPrivateKeys.delete(chatId);
+    }
+    // Update resetSession to include clearing private key
     resetSession(chatId) {
         this.closeWebSocket(chatId);
         this.userStates.delete(chatId);
         this.userCurrentMarket.delete(chatId);
         this.userAmounts.delete(chatId);
         this.userPayloads.delete(chatId);
+        this.clearPrivateKey(chatId);
         // Don't delete wallet address or markets as they can be reused
     }
 }
@@ -111,9 +125,9 @@ class PlutusAPI {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const response = yield (0, utils_1.fetchWithTimeout)(`${this.baseUrl}/api/markets`, {
-                    method: 'GET',
-                    headers: { 'Content-Type': 'application/json' },
-                    timeout: API_TIMEOUT
+                    method: "GET",
+                    headers: { "Content-Type": "application/json" },
+                    timeout: API_TIMEOUT,
                 });
                 if (!response.ok) {
                     throw new Error(`Failed to fetch markets: ${response.status} ${response.statusText}`);
@@ -121,7 +135,7 @@ class PlutusAPI {
                 return yield response.json();
             }
             catch (error) {
-                console.error('Market fetch error:', error);
+                console.error("Market fetch error:", error);
                 throw error;
             }
         });
@@ -130,9 +144,9 @@ class PlutusAPI {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const response = yield (0, utils_1.fetchWithTimeout)(`${this.baseUrl}/api/user/${walletAddress}/positions`, {
-                    method: 'GET',
-                    headers: { 'Content-Type': 'application/json' },
-                    timeout: API_TIMEOUT
+                    method: "GET",
+                    headers: { "Content-Type": "application/json" },
+                    timeout: API_TIMEOUT,
                 });
                 if (!response.ok) {
                     throw new Error(`Failed to fetch user positions: ${response.status} ${response.statusText}`);
@@ -140,7 +154,7 @@ class PlutusAPI {
                 return yield response.json();
             }
             catch (error) {
-                console.error('User positions fetch error:', error);
+                console.error("User positions fetch error:", error);
                 throw error;
             }
         });
@@ -149,15 +163,15 @@ class PlutusAPI {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const response = yield (0, utils_1.fetchWithTimeout)(`${this.baseUrl}/api/transaction/payload`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
                     timeout: API_TIMEOUT,
                     body: JSON.stringify({
                         type,
                         coinAddress,
                         market: marketId,
-                        amount,
-                        walletAddress
+                        amount: amount * Math.pow(10, 6), // Adjust for decimals
+                        walletAddress,
                     }),
                 });
                 if (!response.ok) {
@@ -166,7 +180,7 @@ class PlutusAPI {
                 return yield response.json();
             }
             catch (error) {
-                console.error('Transaction payload error:', error);
+                console.error("Transaction payload error:", error);
                 throw error;
             }
         });
@@ -177,34 +191,66 @@ class TelegramUI {
     constructor(bot) {
         this.bot = bot;
     }
+    startChatSession(chatId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.bot.sendMessage(chatId, "*Chat Session Started*\n\nYou are now connected to the agent. Type your message or click 'End Chat' to finish.", {
+                parse_mode: "Markdown",
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "🔚 End Chat", callback_data: "end_chat" }],
+                    ],
+                },
+            });
+        });
+    }
+    sendAgentMessage(chatId, message) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.bot.sendMessage(chatId, `🤖 *Agent:* ${message}`, {
+                parse_mode: "Markdown",
+            });
+        });
+    }
     sendMainMenu(chatId_1) {
         return __awaiter(this, arguments, void 0, function* (chatId, walletConnected = false) {
             const walletRow = walletConnected
-                ? [{ text: '👛 My Wallet', callback_data: 'wallet' }]
-                : [{ text: '🔗 Connect Wallet', callback_data: 'connect_wallet' }];
+                ? [{ text: "👛 My Wallet", callback_data: "wallet" }]
+                : [{ text: "🔗 Connect Wallet", callback_data: "connect_wallet" }];
             const options = {
                 reply_markup: {
                     inline_keyboard: [
                         walletRow,
+                        [{ text: "📊 Show Markets", callback_data: "markets" }],
                         [
-                            { text: '📊 Show Markets', callback_data: 'markets' }
+                            { text: "💰 Supply Tokens", callback_data: "supply" },
+                            { text: "🔄 Withdraw Tokens", callback_data: "withdraw" },
                         ],
                         [
-                            { text: '💰 Supply Tokens', callback_data: 'supply' },
-                            { text: '🔄 Withdraw Tokens', callback_data: 'withdraw' }
+                            { text: "💸 Borrow Tokens", callback_data: "borrow" },
+                            { text: "💵 Repay Tokens", callback_data: "repay" },
                         ],
-                        [
-                            { text: '💸 Borrow Tokens', callback_data: 'borrow' },
-                            { text: '💵 Repay Tokens', callback_data: 'repay' }
-                        ],
-                        [
-                            { text: '❓ Help', callback_data: 'help' }
-                        ]
-                    ]
+                        [{ text: "❓ Help", callback_data: "help" }],
+                    ],
                 },
-                parse_mode: 'Markdown'
+                parse_mode: "Markdown",
             };
             yield this.bot.sendMessage(chatId, "Welcome to the *Plutus Move Bot*!\nYour gateway to DeFi on the Move blockchain.", options);
+        });
+    }
+    sendPrivateKeyConnectPrompt(chatId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.bot.sendMessage(chatId, "Connect your Wallet with Private Key\n\n" +
+                "Please enter your Move blockchain private key to connect your wallet:\n\n" +
+                "⚠ IMPORTANT SECURITY NOTICE ⚠\n" +
+                "• Your private key will ONLY be used for this transaction\n" +
+                "• It will NOT be stored permanently anywhere\n" +
+                "• It will be cleared from memory immediately after transaction\n" +
+                "• For security, we recommend using a burner wallet with limited funds\n\n" +
+                "Format: Enter private key without the '0x' prefix", {
+                parse_mode: "Markdown",
+                reply_markup: {
+                    inline_keyboard: [[{ text: "🔙 Cancel", callback_data: "menu" }]],
+                },
+            });
         });
     }
     sendWalletInfo(chatId, walletAddress, positions) {
@@ -212,7 +258,7 @@ class TelegramUI {
             let message = `*Your Wallet*\n\nAddress: \`${walletAddress}\`\n\n`;
             if (positions && positions.length > 0) {
                 message += "*Your Positions:*\n\n";
-                positions.forEach(position => {
+                positions.forEach((position) => {
                     message += `Market: ${position.marketId}\n`;
                     message += `Supplied: ${position.supplied}\n`;
                     message += `Borrowed: ${position.borrowed}\n\n`;
@@ -222,21 +268,19 @@ class TelegramUI {
                 message += "You don't have any active positions yet.";
             }
             yield this.bot.sendMessage(chatId, message, {
-                parse_mode: 'Markdown',
+                parse_mode: "Markdown",
                 reply_markup: {
-                    inline_keyboard: [
-                        [{ text: '🔙 Back to Menu', callback_data: 'menu' }]
-                    ]
-                }
+                    inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]],
+                },
             });
         });
     }
     sendMarketsList(chatId_1, markets_1) {
         return __awaiter(this, arguments, void 0, function* (chatId, markets, initialAction = null) {
-            let message = '*Available Markets:*\n\n';
+            let message = "*Available Markets:*\n\n";
             markets.forEach((market, index) => {
                 const name = market.name || `Market #${index + 1}`;
-                const symbol = market.symbol ? ` (${market.symbol})` : '';
+                const symbol = market.symbol ? ` (${market.symbol})` : "";
                 message += `*${name}${symbol}*\n`;
                 message += `ID: \`${market.id}\`\n`;
                 message += `Coin Address: \`${market.coinAddress}\`\n`;
@@ -246,28 +290,36 @@ class TelegramUI {
             });
             // Create action buttons for each market based on the initial action
             const marketButtons = [];
-            if (initialAction === 'supply') {
+            if (initialAction === "supply") {
                 markets.forEach((market, index) => {
                     const name = market.name || `Market #${index + 1}`;
-                    marketButtons.push([{ text: `Supply to ${name}`, callback_data: `s_${index}` }]);
+                    marketButtons.push([
+                        { text: `Supply to ${name}`, callback_data: `s_${index}` },
+                    ]);
                 });
             }
-            else if (initialAction === 'borrow') {
+            else if (initialAction === "borrow") {
                 markets.forEach((market, index) => {
                     const name = market.name || `Market #${index + 1}`;
-                    marketButtons.push([{ text: `Borrow from ${name}`, callback_data: `b_${index}` }]);
+                    marketButtons.push([
+                        { text: `Borrow from ${name}`, callback_data: `b_${index}` },
+                    ]);
                 });
             }
-            else if (initialAction === 'withdraw') {
+            else if (initialAction === "withdraw") {
                 markets.forEach((market, index) => {
                     const name = market.name || `Market #${index + 1}`;
-                    marketButtons.push([{ text: `Withdraw from ${name}`, callback_data: `w_${index}` }]);
+                    marketButtons.push([
+                        { text: `Withdraw from ${name}`, callback_data: `w_${index}` },
+                    ]);
                 });
             }
-            else if (initialAction === 'repay') {
+            else if (initialAction === "repay") {
                 markets.forEach((market, index) => {
                     const name = market.name || `Market #${index + 1}`;
-                    marketButtons.push([{ text: `Repay to ${name}`, callback_data: `r_${index}` }]);
+                    marketButtons.push([
+                        { text: `Repay to ${name}`, callback_data: `r_${index}` },
+                    ]);
                 });
             }
             else {
@@ -276,15 +328,15 @@ class TelegramUI {
                     const name = market.name || `Market #${index + 1}`;
                     marketButtons.push([
                         { text: `${name} - Supply`, callback_data: `s_${index}` },
-                        { text: `${name} - Borrow`, callback_data: `b_${index}` }
+                        { text: `${name} - Borrow`, callback_data: `b_${index}` },
                     ]);
                 });
             }
             // Add back button
-            marketButtons.push([{ text: '🔙 Back to Menu', callback_data: 'menu' }]);
+            marketButtons.push([{ text: "🔙 Back to Menu", callback_data: "menu" }]);
             yield this.bot.sendMessage(chatId, message, {
-                parse_mode: 'Markdown',
-                reply_markup: { inline_keyboard: marketButtons }
+                parse_mode: "Markdown",
+                reply_markup: { inline_keyboard: marketButtons },
             });
         });
     }
@@ -292,21 +344,23 @@ class TelegramUI {
         return __awaiter(this, void 0, void 0, function* () {
             // Format better titles for actions
             const actionTitles = {
-                'supply': 'Supply',
-                'withdraw': 'Withdraw',
-                'borrow': 'Borrow',
-                'repay': 'Repay'
+                supply: "Supply",
+                withdraw: "Withdraw",
+                borrow: "Borrow",
+                repay: "Repay",
             };
             const name = market.name || market.id;
             const actionTitle = action && actionTitles[action]
                 ? actionTitles[action]
-                : 'Unknown Action';
-            const aprType = action === 'supply' || action === 'withdraw' ? 'Supply' : 'Borrow';
-            const aprValue = action === 'supply' || action === 'withdraw' ? market.supplyApr : market.borrowApr;
+                : "Unknown Action";
+            const aprType = action === "supply" || action === "withdraw" ? "Supply" : "Borrow";
+            const aprValue = action === "supply" || action === "withdraw"
+                ? market.supplyApr
+                : market.borrowApr;
             let message = `*${actionTitle} Tokens to ${name}*\n\n`;
             message += `Market ID: \`${market.id}\`\n`;
             message += `Coin Address: \`${market.coinAddress}\`\n`;
-            if (action === 'supply' || action === 'borrow') {
+            if (action === "supply" || action === "borrow") {
                 message += `Current ${aprType} APR: ${aprValue}%\n\n`;
             }
             if (action) {
@@ -316,52 +370,58 @@ class TelegramUI {
                 message += `Action is not specified. Please try again.`;
             }
             yield this.bot.sendMessage(chatId, message, {
-                parse_mode: 'Markdown',
+                parse_mode: "Markdown",
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: '🔙 Back to Markets', callback_data: 'markets' }]
-                    ]
-                }
+                        [{ text: "🔙 Back to Markets", callback_data: "markets" }],
+                    ],
+                },
             });
         });
     }
     sendTransactionConfirmation(chatId, action, market, amount, payload) {
         return __awaiter(this, void 0, void 0, function* () {
             const name = market.name || market.id;
-            const actionTitle = action ? action.charAt(0).toUpperCase() + action.slice(1) : 'Unknown Action';
+            const actionTitle = action
+                ? action.charAt(0).toUpperCase() + action.slice(1)
+                : "Unknown Action";
             let message = `*${actionTitle} Transaction Confirmation*\n\n`;
             message += `Market: ${name}\n`;
             message += `Amount: ${amount}\n\n`;
             message += `*Transaction Payload:*\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\``;
             yield this.bot.sendMessage(chatId, message, {
-                parse_mode: 'Markdown',
+                parse_mode: "Markdown",
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: '✅ Confirm Transaction', callback_data: 'confirm' }],
-                        [{ text: '❌ Cancel', callback_data: 'menu' }]
-                    ]
-                }
+                        [{ text: "✅ Confirm Transaction", callback_data: "confirm" }],
+                        [{ text: "❌ Cancel", callback_data: "menu" }],
+                    ],
+                },
             });
         });
     }
-    sendTransaction(payload) {
+    // Update sendTransaction to use the provided private key
+    sendTransaction(payload, privateKey) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 console.log("Transaction Started");
                 const config = new ts_sdk_1.AptosConfig({ network: ts_sdk_1.Network.TESTNET });
                 const aptos = new ts_sdk_1.Aptos(config);
+                // Use the provided private key instead of a hardcoded one
+                const formattedKey = privateKey.startsWith("0x")
+                    ? privateKey
+                    : `0x${privateKey}`;
                 const account = yield aptos.deriveAccountFromPrivateKey({
-                    privateKey: new ts_sdk_1.Ed25519PrivateKey(ts_sdk_1.PrivateKey.formatPrivateKey('0xab9349629b525a0f8db2b436793f533dab2175d95db360b84ff9d4ddfb50b0c2', ts_sdk_1.PrivateKeyVariants.Ed25519)),
+                    privateKey: new ts_sdk_1.Ed25519PrivateKey(ts_sdk_1.PrivateKey.formatPrivateKey(formattedKey, ts_sdk_1.PrivateKeyVariants.Ed25519)),
                 });
                 console.log("Account address:", account.accountAddress.toString());
-                console.log("Account derived:", account);
                 console.log("Payload", payload);
                 const txn = yield aptos.transaction.build.simple({
                     sender: account.accountAddress,
                     data: {
                         typeArguments: payload.typeArguments,
                         functionArguments: payload.functionArguments,
-                        function: payload.function
+                        function: payload.function,
                     },
                 });
                 console.log("Transaction built:", txn);
@@ -376,18 +436,18 @@ class TelegramUI {
                 return executedTransaction.hash;
             }
             catch (error) {
-                console.error('Error sending transaction:', error);
-                throw new Error('Failed to send transaction');
+                console.error("Error sending transaction:", error);
+                throw new Error("Failed to send transaction");
             }
         });
     }
     sendErrorMessage(chatId, errorMessage) {
         return __awaiter(this, void 0, void 0, function* () {
             yield this.bot.sendMessage(chatId, `❌ *Error:* ${errorMessage}`, {
-                parse_mode: 'Markdown',
+                parse_mode: "Markdown",
                 reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]]
-                }
+                    inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]],
+                },
             });
         });
     }
@@ -413,30 +473,30 @@ class TelegramUI {
                 "5. Confirm the transaction\n\n" +
                 "For more information, visit our website or contact support.";
             yield this.bot.sendMessage(chatId, helpMessage, {
-                parse_mode: 'Markdown',
+                parse_mode: "Markdown",
                 reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]]
-                }
+                    inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]],
+                },
             });
         });
     }
     sendWalletConnectPrompt(chatId) {
         return __awaiter(this, void 0, void 0, function* () {
             yield this.bot.sendMessage(chatId, "*Connect your Wallet*\n\nPlease enter your Move blockchain wallet address to connect it to the bot:", {
-                parse_mode: 'Markdown',
+                parse_mode: "Markdown",
                 reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Cancel', callback_data: 'menu' }]]
-                }
+                    inline_keyboard: [[{ text: "🔙 Cancel", callback_data: "menu" }]],
+                },
             });
         });
     }
     sendSuccessMessage(chatId, message) {
         return __awaiter(this, void 0, void 0, function* () {
             yield this.bot.sendMessage(chatId, `✅ *Success:* ${message}`, {
-                parse_mode: 'Markdown',
+                parse_mode: "Markdown",
                 reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]]
-                }
+                    inline_keyboard: [[{ text: "🔙 Back to Menu", callback_data: "menu" }]],
+                },
             });
         });
     }
@@ -450,8 +510,8 @@ class PlutusBot {
         this.ui = new TelegramUI(this.bot);
         this.setupEventHandlers();
         // Error handler
-        process.on('uncaughtException', (error) => {
-            console.error('Uncaught Exception:', error);
+        process.on("uncaughtException", (error) => {
+            console.error("Uncaught Exception:", error);
         });
     }
     setupEventHandlers() {
@@ -459,9 +519,85 @@ class PlutusBot {
         this.bot.onText(/\/start/, this.handleStartCommand.bind(this));
         this.bot.onText(/\/help/, this.handleHelpCommand.bind(this));
         // Callback query handler
-        this.bot.on('callback_query', this.handleCallbackQuery.bind(this));
+        this.bot.on("callback_query", this.handleCallbackQuery.bind(this));
         // Message handler
-        this.bot.on('message', this.handleMessage.bind(this));
+        this.bot.on("message", this.handleMessage.bind(this));
+        this.bot.onText(/\/chat/, this.handleChatCommand.bind(this));
+    }
+    handleChatCommand(msg) {
+        return __awaiter(this, void 0, void 0, function* () {
+            console.log("Chat command ");
+            const chatId = msg.chat.id;
+            yield this.initiateChatSession(chatId);
+        });
+    }
+    initiateChatSession(chatId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                console.log("Chat session initiated");
+                const ws = new ws_1.default("https://plutus-move-agent.onrender.com");
+                ws.on("open", () => __awaiter(this, void 0, void 0, function* () {
+                    this.sessionManager.setWebSocket(chatId, ws);
+                    this.sessionManager.setState(chatId, "chat");
+                    yield this.ui.startChatSession(chatId);
+                }));
+                ws.on("message", (data) => __awaiter(this, void 0, void 0, function* () {
+                    const message = data.toString();
+                    yield this.ui.sendAgentMessage(chatId, message);
+                }));
+                ws.on("error", (error) => __awaiter(this, void 0, void 0, function* () {
+                    console.error("WebSocket error:", error);
+                    yield this.ui.sendErrorMessage(chatId, "Lost connection to agent. Please try again later.");
+                    this.sessionManager.resetSession(chatId);
+                }));
+                ws.on("close", () => __awaiter(this, void 0, void 0, function* () {
+                    yield this.bot.sendMessage(chatId, "Chat session ended.");
+                    this.sessionManager.resetSession(chatId);
+                }));
+            }
+            catch (error) {
+                console.error("Failed to connect to agent:", error);
+                yield this.ui.sendErrorMessage(chatId, "Failed to connect to agent. Please try again later.");
+            }
+        });
+    }
+    handleMessage(msg) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!msg.text || msg.text.startsWith("/")) {
+                return;
+            }
+            const chatId = msg.chat.id;
+            const text = msg.text.trim();
+            const state = this.sessionManager.getState(chatId);
+            if (!state) {
+                return;
+            }
+            try {
+                if (state === "chat") {
+                    const ws = this.sessionManager.getWebSocket(chatId);
+                    if (ws && ws.readyState === ws_1.default.OPEN) {
+                        ws.send(text);
+                    }
+                    else {
+                        yield this.ui.sendErrorMessage(chatId, "Chat session has ended or disconnected.");
+                        this.sessionManager.resetSession(chatId);
+                    }
+                }
+                else if (state === "connect_wallet") {
+                    yield this.handleWalletConnection(chatId, text);
+                }
+                else if (state === "supply" ||
+                    state === "withdraw" ||
+                    state === "borrow" ||
+                    state === "repay") {
+                    yield this.handleAmountInput(chatId, text, state);
+                }
+            }
+            catch (error) {
+                console.error("Error handling message:", error);
+                yield this.ui.sendErrorMessage(chatId, "An unexpected error occurred. Please try again.");
+            }
+        });
     }
     handleStartCommand(msg) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -481,12 +617,12 @@ class PlutusBot {
             var _a;
             const chatId = (_a = callbackQuery.message) === null || _a === void 0 ? void 0 : _a.chat.id;
             if (!chatId) {
-                console.error('Callback query message or chat ID is undefined.');
+                console.error("Callback query message or chat ID is undefined.");
                 return;
             }
             const data = callbackQuery.data;
             if (!data) {
-                console.error('Callback data is undefined.');
+                console.error("Callback data is undefined.");
                 return;
             }
             console.log(`Received callback data: ${data}`);
@@ -495,7 +631,7 @@ class PlutusBot {
                 yield this.bot.answerCallbackQuery(callbackQuery.id);
             }
             catch (error) {
-                console.error('Error answering callback query:', error);
+                console.error("Error answering callback query:", error);
             }
             // Process the callback data
             yield this.processCallbackData(chatId, data);
@@ -544,36 +680,11 @@ class PlutusBot {
             }
         });
     }
-    handleMessage(msg) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!msg.text || msg.text.startsWith('/')) {
-                return;
-            }
-            const chatId = msg.chat.id;
-            const text = msg.text.trim();
-            const state = this.sessionManager.getState(chatId);
-            if (!state) {
-                return;
-            }
-            try {
-                if (state === 'connect_wallet') {
-                    yield this.handleWalletConnection(chatId, text);
-                }
-                else if (state === 'supply' || state === 'withdraw' || state === 'borrow' || state === 'repay') {
-                    yield this.handleAmountInput(chatId, text, state);
-                }
-            }
-            catch (error) {
-                console.error('Error handling message:', error);
-                yield this.ui.sendErrorMessage(chatId, 'An unexpected error occurred. Please try again.');
-            }
-        });
-    }
     handleWalletConnection(chatId, walletAddress) {
         return __awaiter(this, void 0, void 0, function* () {
             // Basic validation - in real app, would need stronger validation
             if (!walletAddress || walletAddress.length < 10) {
-                yield this.ui.sendErrorMessage(chatId, 'Please enter a valid wallet address.');
+                yield this.ui.sendErrorMessage(chatId, "Please enter a valid wallet address.");
                 return;
             }
             // Store wallet address
@@ -588,7 +699,7 @@ class PlutusBot {
         return __awaiter(this, void 0, void 0, function* () {
             const walletAddress = this.sessionManager.getWallet(chatId);
             if (!walletAddress) {
-                this.sessionManager.setState(chatId, 'connect_wallet');
+                this.sessionManager.setState(chatId, "connect_wallet");
                 yield this.ui.sendWalletConnectPrompt(chatId);
                 return;
             }
@@ -597,7 +708,7 @@ class PlutusBot {
                 yield this.ui.sendWalletInfo(chatId, walletAddress, positions);
             }
             catch (error) {
-                console.error('Error fetching wallet info:', error);
+                console.error("Error fetching wallet info:", error);
                 yield this.ui.sendWalletInfo(chatId, walletAddress);
             }
         });
@@ -607,18 +718,18 @@ class PlutusBot {
             try {
                 // Check if wallet is connected for supply/withdraw/borrow/repay actions
                 if (initialAction && !this.sessionManager.getWallet(chatId)) {
-                    this.sessionManager.setState(chatId, 'connect_wallet');
+                    this.sessionManager.setState(chatId, "connect_wallet");
                     yield this.ui.sendErrorMessage(chatId, `You need to connect your wallet first to ${initialAction} tokens.`);
                     yield this.ui.sendWalletConnectPrompt(chatId);
                     return;
                 }
                 const markets = yield this.api.getMarkets();
                 if (!markets || markets.length === 0) {
-                    yield this.ui.sendErrorMessage(chatId, 'No markets available at the moment.');
+                    yield this.ui.sendErrorMessage(chatId, "No markets available at the moment.");
                     return;
                 }
                 // Enhance market data with names if not provided by API
-                const enhancedMarkets = markets.map((market, index) => (Object.assign(Object.assign({}, market), { name: market.name || `Market ${index + 1}`, symbol: market.symbol || '' })));
+                const enhancedMarkets = markets.map((market, index) => (Object.assign(Object.assign({}, market), { name: market.name || `Market ${index + 1}`, symbol: market.symbol || "" })));
                 // Store markets for later use
                 this.sessionManager.setMarkets(chatId, enhancedMarkets);
                 // Set initial action if provided
@@ -628,8 +739,8 @@ class PlutusBot {
                 yield this.ui.sendMarketsList(chatId, enhancedMarkets, initialAction);
             }
             catch (error) {
-                console.error('Error showing markets:', error);
-                yield this.ui.sendErrorMessage(chatId, 'Failed to fetch market data. Please try again later.');
+                console.error("Error showing markets:", error);
+                yield this.ui.sendErrorMessage(chatId, "Failed to fetch market data. Please try again later.");
             }
         });
     }
@@ -639,21 +750,21 @@ class PlutusBot {
             const marketIndex = parseInt(data.substring(2));
             const markets = this.sessionManager.getMarkets(chatId);
             if (!markets || marketIndex >= markets.length) {
-                yield this.ui.sendErrorMessage(chatId, 'Invalid market selection. Please try again.');
+                yield this.ui.sendErrorMessage(chatId, "Invalid market selection. Please try again.");
                 return;
             }
             const selectedMarket = markets[marketIndex];
             this.sessionManager.setCurrentMarket(chatId, selectedMarket);
             // Map action code to state
             const actionMap = {
-                's': 'supply',
-                'b': 'borrow',
-                'w': 'withdraw',
-                'r': 'repay'
+                s: "supply",
+                b: "borrow",
+                w: "withdraw",
+                r: "repay",
             };
             const action = actionMap[actionCode];
             if (!action) {
-                yield this.ui.sendErrorMessage(chatId, 'Invalid action. Please try again.');
+                yield this.ui.sendErrorMessage(chatId, "Invalid action. Please try again.");
                 return;
             }
             this.sessionManager.setState(chatId, action);
@@ -663,19 +774,20 @@ class PlutusBot {
     handleAmountInput(chatId, amountStr, state) {
         return __awaiter(this, void 0, void 0, function* () {
             // Parse and validate amount
-            const amount = parseFloat(amountStr);
+            const amount = parseFloat(amountStr) * Math.pow(10, 6);
+            console.log("Amount: ", amount);
             if (isNaN(amount) || amount <= 0) {
-                yield this.ui.sendErrorMessage(chatId, 'Please enter a valid positive number for the amount.');
+                yield this.ui.sendErrorMessage(chatId, "Please enter a valid positive number for the amount.");
                 return;
             }
             const selectedMarket = this.sessionManager.getCurrentMarket(chatId);
             const walletAddress = this.sessionManager.getWallet(chatId);
             if (!selectedMarket) {
-                yield this.ui.sendErrorMessage(chatId, 'Market selection error. Please try again.');
+                yield this.ui.sendErrorMessage(chatId, "Market selection error. Please try again.");
                 return;
             }
             if (!walletAddress) {
-                this.sessionManager.setState(chatId, 'connect_wallet');
+                this.sessionManager.setState(chatId, "connect_wallet");
                 yield this.ui.sendWalletConnectPrompt(chatId);
                 return;
             }
@@ -690,7 +802,7 @@ class PlutusBot {
                 yield this.ui.sendTransactionConfirmation(chatId, state, selectedMarket, amount, response.payload);
             }
             catch (error) {
-                console.error('Transaction error:', error);
+                console.error("Transaction error:", error);
                 yield this.ui.sendErrorMessage(chatId, `Error creating ${state} transaction. Please try again later.`);
             }
         });
@@ -702,21 +814,34 @@ class PlutusBot {
             const market = this.sessionManager.getCurrentMarket(chatId);
             const amount = this.sessionManager.getAmount(chatId);
             const payload = this.sessionManager.getPayload(chatId);
+            const privateKey = this.sessionManager.getPrivateKey(chatId);
             console.log("Payload:", payload);
             if (!state || !market || !amount || !payload) {
                 yield this.ui.sendErrorMessage(chatId, 'Transaction details missing. Please try again.');
                 return;
             }
+            if (!privateKey) {
+                this.sessionManager.setState(chatId, 'connect_wallet');
+                yield this.ui.sendPrivateKeyConnectPrompt(chatId);
+                return;
+            }
             try {
-                // Submit the transaction to the blockchain
-                const txHash = yield this.ui.sendTransaction(payload);
-                yield this.ui.sendSuccessMessage(chatId, `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}`);
-                // Reset user state
+                // Send a message to reassure the user about private key security
+                yield this.bot.sendMessage(chatId, "🔐 Processing Transaction\n\nYour private key is being used only for this transaction and will be cleared from memory immediately afterward.", { parse_mode: 'Markdown' });
+                // Submit the transaction to the blockchain using the private key
+                const txHash = yield this.ui.sendTransaction(payload, privateKey);
+                yield this.ui.sendSuccessMessage(chatId, `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}\n\n✅ Your private key has been cleared from memory.`);
+                // Reset user state and explicitly clear the private key
+                this.sessionManager.clearPrivateKey(chatId);
+                // Reset user state and explicitly clear the private key
+                this.sessionManager.clearPrivateKey(chatId);
                 this.sessionManager.resetSession(chatId);
             }
             catch (error) {
                 console.error('Transaction submission error:', error);
-                yield this.ui.sendErrorMessage(chatId, 'Failed to submit transaction. Please try again later.');
+                yield this.ui.sendErrorMessage(chatId, `Failed to submit transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                // Still clear private key even in case of error
+                this.sessionManager.clearPrivateKey(chatId);
             }
         });
     }
@@ -724,9 +849,9 @@ class PlutusBot {
 // Run the bot
 try {
     const bot = new PlutusBot(BOT_TOKEN, API_URL);
-    console.log('Plutus Move Telegram Bot is running...');
+    console.log("Plutus Move Telegram Bot is running...");
 }
 catch (error) {
-    console.error('Failed to start the bot:', error);
+    console.error("Failed to start the bot:", error);
     process.exit(1);
 }

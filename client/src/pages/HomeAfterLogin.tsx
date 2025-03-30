@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/AppSidebar"
 import { MainNav } from "@/components/MainNav"
 import Subscribe from "@/components/Subscibe"
 import { useEffect, useState } from "react"
+import Agent from "./Agent"
 
 const HomeAfterLogin = () => {
     const [isSubscribed, setIsSubscribed] = useState(false);
@@ -95,6 +96,7 @@ const HomeAfterLogin = () => {
                             <Route path="/" element={<Navigate to="/profile" replace />} />
                             <Route path="/profile" element={<Profile />} />
                             <Route path="/trading" element={<TradingPage />} />
+                            <Route path="/agent" element={<Agent />} />
                         </Routes>
                     </main>
                 </div>

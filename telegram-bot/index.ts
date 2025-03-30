@@ -239,7 +239,7 @@ class PlutusAPI {
                         type,
                         coinAddress,
                         market: marketId,
-                        amount,
+                        amount: amount * Math.pow(10, 6), // Adjust for decimals
                         walletAddress,
                     }),
                 }
@@ -971,7 +971,8 @@ class PlutusBot {
         state: UserState
     ): Promise<void> {
         // Parse and validate amount
-        const amount = parseFloat(amountStr);
+        const amount = parseFloat(amountStr) * Math.pow(10, 6);
+        console.log("Amount: ", amount);
 
         if (isNaN(amount) || amount <= 0) {
             await this.ui.sendErrorMessage(
@@ -1001,7 +1002,7 @@ class PlutusBot {
         try {
             // Store amount for confirmation step
             this.sessionManager.setAmount(chatId, amount);
-
+            
             // Generate transaction payload
             const response = await this.api.createTransactionPayload(
                 state,
@@ -1065,7 +1066,6 @@ class PlutusBot {
             await this.ui.sendSuccessMessage(
                 chatId,
                 `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}\n\n✅ Your private key has been cleared from memory.`
-                `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}\n\n✅ Your private key has been cleared from memory.`
             );
 
             // Reset user state and explicitly clear the private key
@@ -1077,7 +1077,6 @@ class PlutusBot {
             console.error('Transaction submission error:', error);
             await this.ui.sendErrorMessage(
                 chatId,
-                `Failed to submit transaction: ${error instanceof Error ? error.message : 'Unknown error'}`
                 `Failed to submit transaction: ${error instanceof Error ? error.message : 'Unknown error'}`
             );
 
