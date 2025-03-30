@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@/components/ui/button";
 import {
     NavigationMenu,
@@ -11,7 +9,8 @@ import {
 } from "@/components/ui/navigation-menu";
 import { Menu, MoveRight, X } from "lucide-react";
 import { useState } from "react";
-import {Link} from "react-router";
+import { Link } from "react-router";
+import Login from "./Login";
 
 function Header1() {
     const navigationItems = [
@@ -121,15 +120,15 @@ function Header1() {
                     </NavigationMenu>
                 </div>
                 <div className="flex lg:justify-center">
-                    <p className="font-semibold">TWBlocks</p>
+                    <p className="font-semibold">Quantum Finance</p>
                 </div>
                 <div className="flex justify-end w-full gap-4">
                     <Button variant="ghost" className="hidden md:inline">
                         Book a demo
                     </Button>
-                    <div className="border-r hidden md:inline"></div>
-                    <Button variant="outline">Sign in</Button>
-                    <Button>Get started</Button>
+                    <div className="flex items-center space-x-8">
+                        <Login/>
+                    </div>
                 </div>
                 <div className="flex w-12 shrink lg:hidden items-end justify-end">
                     <Button variant="ghost" onClick={() => setOpen(!isOpen)}>
@@ -142,7 +141,7 @@ function Header1() {
                                     <div className="flex flex-row gap-2">
                                         {item.href ? (
                                             <Link
-                                                to={"/"}
+                                                to={item.href}
                                                 className="flex justify-between items-center"
                                             >
                                                 <span className="text-lg">{item.title}</span>
@@ -155,7 +154,7 @@ function Header1() {
                                             item.items.map((subItem) => (
                                                 <Link
                                                     key={subItem.title}
-                                                   to="/"
+                                                    to={subItem.href}
                                                     className="flex justify-between items-center"
                                                 >
                                                     <span className="text-muted-foreground">
@@ -175,4 +174,4 @@ function Header1() {
     );
 }
 
-export { Header1 };
+export default Header1;
