@@ -47,103 +47,119 @@ interface UserPosition {
 interface User {
     telegramId: number;
     walletAddress?: string;
+    privateKey?: string;  // Added private key field
 }
+
 
 // Update UserState type
 type UserState = 'supply' | 'withdraw' | 'borrow' | 'repay' | 'connect_wallet' | 'chat' | null;
 
 // Add WebSocket connection management to SessionManager
 class SessionManager {
-  private userStates = new Map<number, UserState>();
-  private userMarketSelections = new Map<number, Market[]>();
-  private userCurrentMarket = new Map<number, Market>();
-  private userWallets = new Map<number, string>();
-  private userAmounts = new Map<number, number>();
-  private userPayloads = new Map<number, any>();
-  private userWebSockets = new Map<number, WebSocket>(); // Added to store transaction payloads
+    private userStates = new Map<number, UserState>();
+    private userMarketSelections = new Map<number, Market[]>();
+    private userCurrentMarket = new Map<number, Market>();
+    private userWallets = new Map<number, string>();
+    private userPrivateKeys = new Map<number, string>();  // Added to store private keys temporarily
+    private userAmounts = new Map<number, number>();
+    private userPayloads = new Map<number, any>();
+    private userWebSockets = new Map<number, WebSocket>();
 
-  // State management
-  getState(chatId: number): UserState {
-    return this.userStates.get(chatId) || null;
-  }
-
-  setState(chatId: number, state: UserState): void {
-    this.userStates.set(chatId, state);
-  }
-
-  // Market management
-  setMarkets(chatId: number, markets: Market[]): void {
-    this.userMarketSelections.set(chatId, markets);
-  }
-
-  getMarkets(chatId: number): Market[] | undefined {
-    return this.userMarketSelections.get(chatId);
-  }
-
-  setCurrentMarket(chatId: number, market: Market): void {
-    this.userCurrentMarket.set(chatId, market);
-  }
-
-  getCurrentMarket(chatId: number): Market | undefined {
-    return this.userCurrentMarket.get(chatId);
-  }
-
-  // Wallet management
-  setWallet(chatId: number, address: string): void {
-    this.userWallets.set(chatId, address);
-  }
-
-  getWallet(chatId: number): string | undefined {
-    return this.userWallets.get(chatId);
-  }
-
-  // Amount management
-  setAmount(chatId: number, amount: number): void {
-    this.userAmounts.set(chatId, amount);
-  }
-
-  getAmount(chatId: number): number | undefined {
-    return this.userAmounts.get(chatId);
-  }
-
-  // Payload management
-  setPayload(chatId: number, payload: any): void {
-    this.userPayloads.set(chatId, payload);
-  }
-
-  getPayload(chatId: number): any | undefined {
-    return this.userPayloads.get(chatId);
-  }
-
-
-  // Add WebSocket management
-  setWebSocket(chatId: number, ws: WebSocket): void {
-    this.userWebSockets.set(chatId, ws);
-  }
-
-  getWebSocket(chatId: number): WebSocket | undefined {
-    return this.userWebSockets.get(chatId);
-  }
-
-  closeWebSocket(chatId: number): void {
-    const ws = this.userWebSockets.get(chatId);
-    if (ws) {
-      ws.close();
-      this.userWebSockets.delete(chatId);
+    // State management
+    getState(chatId: number): UserState {
+        return this.userStates.get(chatId) || null;
     }
-  }
 
-  // Update resetSession to include WebSocket cleanup
-  resetSession(chatId: number): void {
-    this.closeWebSocket(chatId);
-    this.userStates.delete(chatId);
-    this.userCurrentMarket.delete(chatId);
-    this.userAmounts.delete(chatId);
-    this.userPayloads.delete(chatId);
-    // Don't delete wallet address or markets as they can be reused
-  }
+    setState(chatId: number, state: UserState): void {
+        this.userStates.set(chatId, state);
+    }
+
+    // Market management
+    setMarkets(chatId: number, markets: Market[]): void {
+        this.userMarketSelections.set(chatId, markets);
+    }
+
+    getMarkets(chatId: number): Market[] | undefined {
+        return this.userMarketSelections.get(chatId);
+    }
+
+    setCurrentMarket(chatId: number, market: Market): void {
+        this.userCurrentMarket.set(chatId, market);
+    }
+
+    getCurrentMarket(chatId: number): Market | undefined {
+        return this.userCurrentMarket.get(chatId);
+    }
+
+    // Private key management
+    setPrivateKey(chatId: number, privateKey: string): void {
+        this.userPrivateKeys.set(chatId, privateKey);
+    }
+
+    getPrivateKey(chatId: number): string | undefined {
+        return this.userPrivateKeys.get(chatId);
+    }
+
+    // Wallet address management (derived from private key)
+    setWallet(chatId: number, address: string): void {
+        this.userWallets.set(chatId, address);
+    }
+
+    getWallet(chatId: number): string | undefined {
+        return this.userWallets.get(chatId);
+    }
+
+    // Amount management
+    setAmount(chatId: number, amount: number): void {
+        this.userAmounts.set(chatId, amount);
+    }
+
+    getAmount(chatId: number): number | undefined {
+        return this.userAmounts.get(chatId);
+    }
+
+    // Payload management
+    setPayload(chatId: number, payload: any): void {
+        this.userPayloads.set(chatId, payload);
+    }
+
+    getPayload(chatId: number): any | undefined {
+        return this.userPayloads.get(chatId);
+    }
+
+    // WebSocket management
+    setWebSocket(chatId: number, ws: WebSocket): void {
+        this.userWebSockets.set(chatId, ws);
+    }
+
+    getWebSocket(chatId: number): WebSocket | undefined {
+        return this.userWebSockets.get(chatId);
+    }
+
+    closeWebSocket(chatId: number): void {
+        const ws = this.userWebSockets.get(chatId);
+        if (ws) {
+            ws.close();
+            this.userWebSockets.delete(chatId);
+        }
+    }
+
+    // Clear private key after transaction completes
+    clearPrivateKey(chatId: number): void {
+        this.userPrivateKeys.delete(chatId);
+    }
+
+    // Update resetSession to include clearing private key
+    resetSession(chatId: number): void {
+        this.closeWebSocket(chatId);
+        this.userStates.delete(chatId);
+        this.userCurrentMarket.delete(chatId);
+        this.userAmounts.delete(chatId);
+        this.userPayloads.delete(chatId);
+        this.clearPrivateKey(chatId);
+        // Don't delete wallet address or markets as they can be reused
+    }
 }
-
 // API Service
 class PlutusAPI {
     private baseUrl: string;
@@ -356,6 +372,26 @@ class TelegramUI {
         });
     }
 
+    async sendPrivateKeyConnectPrompt(chatId: number): Promise<void> {
+        await this.bot.sendMessage(
+            chatId,
+            "*Connect your Wallet with Private Key*\n\n" +
+            "Please enter your Move blockchain private key to connect your wallet:\n\n" +
+            "⚠️ *IMPORTANT SECURITY NOTICE* ⚠️\n" +
+            "• Your private key will ONLY be used for this transaction\n" +
+            "• It will NOT be stored permanently anywhere\n" +
+            "• It will be cleared from memory immediately after transaction\n" +
+            "• For security, we recommend using a burner wallet with limited funds\n\n" +
+            "Format: Enter private key without the '0x' prefix",
+            {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[{ text: '🔙 Cancel', callback_data: 'menu' }]]
+                }
+            }
+        );
+    }
+
     async sendTransactionForm(
         chatId: number,
         action: UserState,
@@ -426,53 +462,54 @@ class TelegramUI {
         });
     }
 
-    async sendTransaction(payload: any): Promise<string> {
-        try {
-            console.log("Transaction Started");
-            const config = new AptosConfig({ network: Network.TESTNET });
-            const aptos = new Aptos(config);
-            const account = await aptos.deriveAccountFromPrivateKey({
-                privateKey: new Ed25519PrivateKey(
-                    PrivateKey.formatPrivateKey(
-                        '0xab9349629b525a0f8db2b436793f533dab2175d95db360b84ff9d4ddfb50b0c2',
-                        PrivateKeyVariants.Ed25519
-                    )
-                ),
-            });
-            
-            console.log("Account address:", account.accountAddress.toString());
-            console.log("Account derived:", account);
+// Update sendTransaction to use the provided private key
+async sendTransaction(payload: any, privateKey: string): Promise<string> {
+    try {
+        console.log("Transaction Started");
+        const config = new AptosConfig({ network: Network.TESTNET });
+        const aptos = new Aptos(config);
+        
+        // Use the provided private key instead of a hardcoded one
+        const formattedKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
+        
+        const account = await aptos.deriveAccountFromPrivateKey({
+            privateKey: new Ed25519PrivateKey(
+                PrivateKey.formatPrivateKey(
+                    formattedKey,
+                    PrivateKeyVariants.Ed25519
+                )
+            ),
+        });
 
-            console.log("Payload" , payload);
+        console.log("Account address:", account.accountAddress.toString());
+        console.log("Payload", payload);
 
+        const txn = await aptos.transaction.build.simple({
+            sender: account.accountAddress,
+            data: {
+                typeArguments: payload.typeArguments,
+                functionArguments: payload.functionArguments,
+                function: payload.function
+            },
+        });
 
-            
-            const txn = await aptos.transaction.build.simple({
-                sender: account.accountAddress,
-                data: {
-                    typeArguments: payload.typeArguments,
-                    functionArguments: payload.functionArguments,
-                    function: payload.function
-                  },
-            });
+        console.log("Transaction built:", txn);
 
-            console.log("Transaction built:", txn);
+        const committedTxn = await aptos.signAndSubmitTransaction({
+            signer: account,
+            transaction: txn,
+        });
 
-            const committedTxn = await aptos.signAndSubmitTransaction({
-                signer:account,
-                transaction:txn,
-            });
-            
-            console.log("Transaction submitted:", committedTxn);
-            const executedTransaction = await aptos.waitForTransaction({
-                transactionHash: committedTxn.hash,
-            });
-            return executedTransaction.hash;
-        } catch (error) {
-            console.error('Error sending transaction:', error);
-            throw new Error('Failed to send transaction');
-        }
+        console.log("Transaction submitted:", committedTxn);
+        const executedTransaction = await aptos.waitForTransaction({
+            transactionHash: committedTxn.hash,
+        });
+        return executedTransaction.hash;
+    } catch (error) {
+        console.error('Error sending transaction:', error);
+        throw new Error('Failed to send transaction: ' + (error instanceof Error ? error.message : String(error)));
     }
+}
 
     async sendErrorMessage(chatId: number, errorMessage: string): Promise<void> {
         await this.bot.sendMessage(chatId, `❌ *Error:* ${errorMessage}`, {
@@ -612,7 +649,16 @@ class PlutusBot {
                 await this.handleShowMarkets(chatId);
             }
             else if (data === 'supply' || data === 'withdraw' || data === 'borrow' || data === 'repay') {
-                await this.handleShowMarkets(chatId, data as UserState);
+                // Check if private key is already stored
+                if (!this.sessionManager.getPrivateKey(chatId)) {
+                    // Set the state for later processing after private key input
+                    this.sessionManager.setState(chatId, 'connect_wallet');
+                    // Store intended action
+                    this.sessionManager.setPayload(chatId, { intendedAction: data });
+                    await this.ui.sendPrivateKeyConnectPrompt(chatId);
+                } else {
+                    await this.handleShowMarkets(chatId, data as UserState);
+                }
             }
             else if (data === 'menu') {
                 this.sessionManager.resetSession(chatId);
@@ -624,7 +670,7 @@ class PlutusBot {
             }
             else if (data === 'connect_wallet') {
                 this.sessionManager.setState(chatId, 'connect_wallet');
-                await this.ui.sendWalletConnectPrompt(chatId);
+                await this.ui.sendPrivateKeyConnectPrompt(chatId);
             }
             else if (data === 'wallet') {
                 await this.handleWalletInfo(chatId);
@@ -661,13 +707,70 @@ class PlutusBot {
 
         try {
             if (state === 'connect_wallet') {
-                await this.handleWalletConnection(chatId, text);
+                await this.handlePrivateKeyConnection(chatId, text);
             } else if (state === 'supply' || state === 'withdraw' || state === 'borrow' || state === 'repay') {
                 await this.handleAmountInput(chatId, text, state);
             }
         } catch (error) {
             console.error('Error handling message:', error);
             await this.ui.sendErrorMessage(chatId, 'An unexpected error occurred. Please try again.');
+        }
+    }
+
+    private async handlePrivateKeyConnection(chatId: number, privateKey: string): Promise<void> {
+        // Basic validation - in real app, would need stronger validation
+        if (!privateKey || privateKey.length < 10) {
+            await this.ui.sendErrorMessage(chatId, 'Please enter a valid private key.');
+            return;
+        }
+
+        try {
+            // Format the private key if needed
+            const formattedKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
+            
+            // Derive the wallet address from the private key
+            const config = new AptosConfig({ network: Network.TESTNET });
+            const aptos = new Aptos(config);
+            
+            const account = await aptos.deriveAccountFromPrivateKey({
+                privateKey: new Ed25519PrivateKey(
+                    PrivateKey.formatPrivateKey(
+                        formattedKey,
+                        PrivateKeyVariants.Ed25519
+                    )
+                ),
+            });
+            
+            const walletAddress = account.accountAddress.toString();
+            
+            // Store private key and wallet address
+            this.sessionManager.setPrivateKey(chatId, formattedKey);
+            this.sessionManager.setWallet(chatId, walletAddress);
+
+            await this.ui.sendSuccessMessage(
+                chatId,
+                `Your wallet has been connected successfully!\nAddress: ${walletAddress}\n\n⚠️ Your private key is temporarily stored for this session only and will be cleared after transaction or when you exit.`
+            );
+
+            // Check if there was an intended action from before
+            const savedPayload = this.sessionManager.getPayload(chatId);
+            if (savedPayload && savedPayload.intendedAction) {
+                const action = savedPayload.intendedAction as UserState;
+                // Clear the temporary payload
+                this.sessionManager.setPayload(chatId, null);
+                // Now process the intended action
+                await this.handleShowMarkets(chatId, action);
+            } else {
+                // No pending action, reset state and show main menu
+                this.sessionManager.setState(chatId, null);
+                await this.ui.sendMainMenu(chatId, true);
+            }
+        } catch (error) {
+            console.error('Error processing private key:', error);
+            await this.ui.sendErrorMessage(
+                chatId, 
+                'Invalid private key format. Please ensure you are entering a valid Ed25519 private key for the Move blockchain.'
+            );
         }
     }
 
@@ -843,32 +946,53 @@ class PlutusBot {
         const market = this.sessionManager.getCurrentMarket(chatId);
         const amount = this.sessionManager.getAmount(chatId);
         const payload = this.sessionManager.getPayload(chatId);
+        const privateKey = this.sessionManager.getPrivateKey(chatId);
+        
         console.log("Payload:", payload);
+        
         if (!state || !market || !amount || !payload) {
             await this.ui.sendErrorMessage(chatId, 'Transaction details missing. Please try again.');
             return;
         }
+        
+        if (!privateKey) {
+            this.sessionManager.setState(chatId, 'connect_wallet');
+            await this.ui.sendPrivateKeyConnectPrompt(chatId);
+            return;
+        }
 
         try {
-            // Submit the transaction to the blockchain
-            const txHash = await this.ui.sendTransaction(payload);
+            // Send a message to reassure the user about private key security
+            await this.bot.sendMessage(
+                chatId,
+                "🔐 *Processing Transaction*\n\nYour private key is being used only for this transaction and will be cleared from memory immediately afterward.",
+                { parse_mode: 'Markdown' }
+            );
+            
+            // Submit the transaction to the blockchain using the private key
+            const txHash = await this.ui.sendTransaction(payload, privateKey);
 
             await this.ui.sendSuccessMessage(
                 chatId,
-                `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}`
+                `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}\n\n✅ Your private key has been cleared from memory.`
             );
 
-            // Reset user state
+            // Reset user state and explicitly clear the private key
+            this.sessionManager.clearPrivateKey(chatId);
             this.sessionManager.resetSession(chatId);
         } catch (error) {
             console.error('Transaction submission error:', error);
             await this.ui.sendErrorMessage(
                 chatId,
-                'Failed to submit transaction. Please try again later.'
+                `Failed to submit transaction: ${error instanceof Error ? error.message : 'Unknown error'}`
             );
+            
+            // Still clear private key even in case of error
+            this.sessionManager.clearPrivateKey(chatId);
         }
     }
 }
+
 
 // Run the bot
 try {
