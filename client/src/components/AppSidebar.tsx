@@ -51,7 +51,7 @@ export function AppSidebar() {
                                 <div className={`flex ${state === "collapsed" ? "h-9 w-9" : "h-10 w-10"} items-center justify-center rounded-xl bg-black shadow-lg shadow-black/10 group-hover:scale-105 transition-all`}>
                                     <Wallet className={`${state === "collapsed" ? "h-4 w-4" : "h-5 w-5"} text-white`} />
                                 </div>
-                                <span className="font-bold text-xl text-gray-900 font-montserrat tracking-tight">AURORA</span>
+                                <span className="font-bold text-xl text-gray-900 font-montserrat tracking-tight">PLUTUS</span>
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>

@@ -24,7 +24,7 @@ const HomeAfterLogin = () => {
                                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black shadow-lg shadow-black/10">
                                     <span className="text-lg font-bold text-white font-montserrat">A</span>
                                 </div>
-                                <span className="font-bold text-xl text-gray-900 font-montserrat tracking-tight">AURORA</span>
+                                <span className="font-bold text-xl text-gray-900 font-montserrat tracking-tight">QUANTUM</span>
                             </div>
                             <MainNav />
                         </div>
