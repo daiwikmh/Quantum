@@ -1,0 +1,50 @@
+{
+  "name": "newp",
+  "version": "1.0.0",
+  "main": "StakingRewardsApi.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@apollo/client": "^3.12.8",
+    "@coinbase/agentkit": "^0.1.1",
+    "@coinbase/agentkit-langchain": "^0.1.0",
+    "@coinbase/cdp-langchain": "^0.0.15",
+    "@google/generative-ai": "^0.21.0",
+    "@huggingface/inference": "^2.8.1",
+    "@langchain/community": "^0.3.28",
+    "@langchain/core": "^0.3.37",
+    "@langchain/exa": "^0.1.0",
+    "@langchain/google-genai": "^0.1.8",
+    "@langchain/langgraph": "^0.2.44",
+    "@langchain/openai": "^0.4.2",
+    "@lidofinance/lido-ethereum-sdk": "^4.2.0",
+    "@privy-io/server-auth": "^1.18.5",
+    "axios": "^1.7.9",
+    "cheerio": "^1.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "ethers": "^6.13.5",
+    "exa-js": "^1.5.12",
+    "express": "^4.21.2",
+    "graphql": "^16.10.0",
+    "graphql-request": "^7.1.2",
+    "langchain": "^0.3.15",
+    "move-agent-kit": "^0.2.0",
+    "node-cache": "^5.1.2",
+    "openai": "^4.82.0",
+    "uuid": "^11.0.5",
+    "viem": "^2.22.19",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "chai": "^5.1.2",
+    "mocha": "^11.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}

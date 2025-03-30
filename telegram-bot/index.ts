@@ -10,6 +10,7 @@ import {
     PrivateKey,
     PrivateKeyVariants,
 } from "@aptos-labs/ts-sdk";
+import WebSocket from 'ws';
 
 // Load environment variables
 dotenv.config();
@@ -48,78 +49,99 @@ interface User {
     walletAddress?: string;
 }
 
-type UserState = 'supply' | 'withdraw' | 'borrow' | 'repay' | 'connect_wallet' | null;
+// Update UserState type
+type UserState = 'supply' | 'withdraw' | 'borrow' | 'repay' | 'connect_wallet' | 'chat' | null;
 
-// Session management
+// Add WebSocket connection management to SessionManager
 class SessionManager {
-    private userStates = new Map<number, UserState>();
-    private userMarketSelections = new Map<number, Market[]>();
-    private userCurrentMarket = new Map<number, Market>();
-    private userWallets = new Map<number, string>();
-    private userAmounts = new Map<number, number>();
-    private userPayloads = new Map<number, any>();  // Added to store transaction payloads
+  private userStates = new Map<number, UserState>();
+  private userMarketSelections = new Map<number, Market[]>();
+  private userCurrentMarket = new Map<number, Market>();
+  private userWallets = new Map<number, string>();
+  private userAmounts = new Map<number, number>();
+  private userPayloads = new Map<number, any>();
+  private userWebSockets = new Map<number, WebSocket>(); // Added to store transaction payloads
 
-    // State management
-    getState(chatId: number): UserState {
-        return this.userStates.get(chatId) || null;
-    }
+  // State management
+  getState(chatId: number): UserState {
+    return this.userStates.get(chatId) || null;
+  }
 
-    setState(chatId: number, state: UserState): void {
-        this.userStates.set(chatId, state);
-    }
+  setState(chatId: number, state: UserState): void {
+    this.userStates.set(chatId, state);
+  }
 
-    // Market management
-    setMarkets(chatId: number, markets: Market[]): void {
-        this.userMarketSelections.set(chatId, markets);
-    }
+  // Market management
+  setMarkets(chatId: number, markets: Market[]): void {
+    this.userMarketSelections.set(chatId, markets);
+  }
 
-    getMarkets(chatId: number): Market[] | undefined {
-        return this.userMarketSelections.get(chatId);
-    }
+  getMarkets(chatId: number): Market[] | undefined {
+    return this.userMarketSelections.get(chatId);
+  }
 
-    setCurrentMarket(chatId: number, market: Market): void {
-        this.userCurrentMarket.set(chatId, market);
-    }
+  setCurrentMarket(chatId: number, market: Market): void {
+    this.userCurrentMarket.set(chatId, market);
+  }
 
-    getCurrentMarket(chatId: number): Market | undefined {
-        return this.userCurrentMarket.get(chatId);
-    }
+  getCurrentMarket(chatId: number): Market | undefined {
+    return this.userCurrentMarket.get(chatId);
+  }
 
-    // Wallet management
-    setWallet(chatId: number, address: string): void {
-        this.userWallets.set(chatId, address);
-    }
+  // Wallet management
+  setWallet(chatId: number, address: string): void {
+    this.userWallets.set(chatId, address);
+  }
 
-    getWallet(chatId: number): string | undefined {
-        return this.userWallets.get(chatId);
-    }
+  getWallet(chatId: number): string | undefined {
+    return this.userWallets.get(chatId);
+  }
 
-    // Amount management
-    setAmount(chatId: number, amount: number): void {
-        this.userAmounts.set(chatId, amount);
-    }
+  // Amount management
+  setAmount(chatId: number, amount: number): void {
+    this.userAmounts.set(chatId, amount);
+  }
 
-    getAmount(chatId: number): number | undefined {
-        return this.userAmounts.get(chatId);
-    }
+  getAmount(chatId: number): number | undefined {
+    return this.userAmounts.get(chatId);
+  }
 
-    // Payload management
-    setPayload(chatId: number, payload: any): void {
-        this.userPayloads.set(chatId, payload);
-    }
+  // Payload management
+  setPayload(chatId: number, payload: any): void {
+    this.userPayloads.set(chatId, payload);
+  }
 
-    getPayload(chatId: number): any | undefined {
-        return this.userPayloads.get(chatId);
-    }
+  getPayload(chatId: number): any | undefined {
+    return this.userPayloads.get(chatId);
+  }
 
-    // Reset user session
-    resetSession(chatId: number): void {
-        this.userStates.delete(chatId);
-        this.userCurrentMarket.delete(chatId);
-        this.userAmounts.delete(chatId);
-        this.userPayloads.delete(chatId);
-        // Don't delete wallet address or markets as they can be reused
+
+  // Add WebSocket management
+  setWebSocket(chatId: number, ws: WebSocket): void {
+    this.userWebSockets.set(chatId, ws);
+  }
+
+  getWebSocket(chatId: number): WebSocket | undefined {
+    return this.userWebSockets.get(chatId);
+  }
+
+  closeWebSocket(chatId: number): void {
+    const ws = this.userWebSockets.get(chatId);
+    if (ws) {
+      ws.close();
+      this.userWebSockets.delete(chatId);
     }
+  }
+
+  // Update resetSession to include WebSocket cleanup
+  resetSession(chatId: number): void {
+    this.closeWebSocket(chatId);
+    this.userStates.delete(chatId);
+    this.userCurrentMarket.delete(chatId);
+    this.userAmounts.delete(chatId);
+    this.userPayloads.delete(chatId);
+    // Don't delete wallet address or markets as they can be reused
+  }
 }
 
 // API Service
