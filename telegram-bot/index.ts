@@ -45,9 +45,11 @@ interface UserPosition {
 }
 
 interface User {
-  telegramId: number;
-  walletAddress?: string;
+    telegramId: number;
+    walletAddress?: string;
+    privateKey?: string;  // Added private key field
 }
+
 
 // Update UserState type
 type UserState =
@@ -61,95 +63,111 @@ type UserState =
 
 // Add WebSocket connection management to SessionManager
 class SessionManager {
-  private userStates = new Map<number, UserState>();
-  private userMarketSelections = new Map<number, Market[]>();
-  private userCurrentMarket = new Map<number, Market>();
-  private userWallets = new Map<number, string>();
-  private userAmounts = new Map<number, number>();
-  private userPayloads = new Map<number, any>();
-  private userWebSockets = new Map<number, WebSocket>(); // Added to store transaction payloads
+    private userStates = new Map<number, UserState>();
+    private userMarketSelections = new Map<number, Market[]>();
+    private userCurrentMarket = new Map<number, Market>();
+    private userWallets = new Map<number, string>();
+    private userPrivateKeys = new Map<number, string>();  // Added to store private keys temporarily
+    private userAmounts = new Map<number, number>();
+    private userPayloads = new Map<number, any>();
+    private userWebSockets = new Map<number, WebSocket>();
 
-  // State management
-  getState(chatId: number): UserState {
-    return this.userStates.get(chatId) || null;
-  }
+    // State management
+    getState(chatId: number): UserState {
+        return this.userStates.get(chatId) || null;
+    }
 
-  setState(chatId: number, state: UserState): void {
-    this.userStates.set(chatId, state);
-  }
+    setState(chatId: number, state: UserState): void {
+        this.userStates.set(chatId, state);
+    }
 
-  // Market management
-  setMarkets(chatId: number, markets: Market[]): void {
-    this.userMarketSelections.set(chatId, markets);
-  }
+    // Market management
+    setMarkets(chatId: number, markets: Market[]): void {
+        this.userMarketSelections.set(chatId, markets);
+    }
 
-  getMarkets(chatId: number): Market[] | undefined {
-    return this.userMarketSelections.get(chatId);
-  }
+    getMarkets(chatId: number): Market[] | undefined {
+        return this.userMarketSelections.get(chatId);
+    }
 
-  setCurrentMarket(chatId: number, market: Market): void {
-    this.userCurrentMarket.set(chatId, market);
-  }
+    setCurrentMarket(chatId: number, market: Market): void {
+        this.userCurrentMarket.set(chatId, market);
+    }
 
-  getCurrentMarket(chatId: number): Market | undefined {
-    return this.userCurrentMarket.get(chatId);
-  }
+    getCurrentMarket(chatId: number): Market | undefined {
+        return this.userCurrentMarket.get(chatId);
+    }
 
-  // Wallet management
-  setWallet(chatId: number, address: string): void {
-    this.userWallets.set(chatId, address);
-  }
+    // Private key management
+    setPrivateKey(chatId: number, privateKey: string): void {
+        this.userPrivateKeys.set(chatId, privateKey);
+    }
 
-  getWallet(chatId: number): string | undefined {
-    return this.userWallets.get(chatId);
-  }
+    getPrivateKey(chatId: number): string | undefined {
+        return this.userPrivateKeys.get(chatId);
+    }
 
-  // Amount management
-  setAmount(chatId: number, amount: number): void {
-    this.userAmounts.set(chatId, amount);
-  }
+    // Wallet address management (derived from private key)
+    setWallet(chatId: number, address: string): void {
+        this.userWallets.set(chatId, address);
+    }
 
-  getAmount(chatId: number): number | undefined {
-    return this.userAmounts.get(chatId);
-  }
+    getWallet(chatId: number): string | undefined {
+        return this.userWallets.get(chatId);
+    }
 
-  // Payload management
-  setPayload(chatId: number, payload: any): void {
-    this.userPayloads.set(chatId, payload);
-  }
+    // Amount management
+    setAmount(chatId: number, amount: number): void {
+        this.userAmounts.set(chatId, amount);
+    }
+
+    getAmount(chatId: number): number | undefined {
+        return this.userAmounts.get(chatId);
+    }
+
+    // Payload management
+    setPayload(chatId: number, payload: any): void {
+        this.userPayloads.set(chatId, payload);
+    }
 
   getPayload(chatId: number): any | undefined {
     return this.userPayloads.get(chatId);
   }
+
 
   // Add WebSocket management
   setWebSocket(chatId: number, ws: WebSocket): void {
     this.userWebSockets.set(chatId, ws);
   }
 
-  getWebSocket(chatId: number): WebSocket | undefined {
-    return this.userWebSockets.get(chatId);
-  }
-
-  closeWebSocket(chatId: number): void {
-    const ws = this.userWebSockets.get(chatId);
-    if (ws) {
-      ws.close();
-      this.userWebSockets.delete(chatId);
+    getWebSocket(chatId: number): WebSocket | undefined {
+        return this.userWebSockets.get(chatId);
     }
-  }
 
-  // Update resetSession to include WebSocket cleanup
-  resetSession(chatId: number): void {
-    this.closeWebSocket(chatId);
-    this.userStates.delete(chatId);
-    this.userCurrentMarket.delete(chatId);
-    this.userAmounts.delete(chatId);
-    this.userPayloads.delete(chatId);
-    // Don't delete wallet address or markets as they can be reused
-  }
+    closeWebSocket(chatId: number): void {
+        const ws = this.userWebSockets.get(chatId);
+        if (ws) {
+            ws.close();
+            this.userWebSockets.delete(chatId);
+        }
+    }
+
+    // Clear private key after transaction completes
+    clearPrivateKey(chatId: number): void {
+        this.userPrivateKeys.delete(chatId);
+    }
+
+    // Update resetSession to include clearing private key
+    resetSession(chatId: number): void {
+        this.closeWebSocket(chatId);
+        this.userStates.delete(chatId);
+        this.userCurrentMarket.delete(chatId);
+        this.userAmounts.delete(chatId);
+        this.userPayloads.delete(chatId);
+        this.clearPrivateKey(chatId);
+        // Don't delete wallet address or markets as they can be reused
+    }
 }
-
 // API Service
 class PlutusAPI {
   private baseUrl: string;
@@ -394,11 +412,11 @@ class TelegramUI {
     // Add back button
     marketButtons.push([{ text: "🔙 Back to Menu", callback_data: "menu" }]);
 
-    await this.bot.sendMessage(chatId, message, {
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: marketButtons },
-    });
-  }
+        await this.bot.sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: marketButtons }
+        });
+    }
 
   async sendTransactionForm(
     chatId: number,
@@ -481,51 +499,54 @@ class TelegramUI {
     });
   }
 
-  async sendTransaction(payload: any): Promise<string> {
+// Update sendTransaction to use the provided private key
+async sendTransaction(payload: any, privateKey: string): Promise<string> {
     try {
-      console.log("Transaction Started");
-      const config = new AptosConfig({ network: Network.TESTNET });
-      const aptos = new Aptos(config);
-      const account = await aptos.deriveAccountFromPrivateKey({
-        privateKey: new Ed25519PrivateKey(
-          PrivateKey.formatPrivateKey(
-            "0xab9349629b525a0f8db2b436793f533dab2175d95db360b84ff9d4ddfb50b0c2",
-            PrivateKeyVariants.Ed25519
-          )
-        ),
-      });
+        console.log("Transaction Started");
+        const config = new AptosConfig({ network: Network.TESTNET });
+        const aptos = new Aptos(config);
+        
+        // Use the provided private key instead of a hardcoded one
+        const formattedKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
+        
+        const account = await aptos.deriveAccountFromPrivateKey({
+            privateKey: new Ed25519PrivateKey(
+                PrivateKey.formatPrivateKey(
+                    formattedKey,
+                    PrivateKeyVariants.Ed25519
+                )
+            ),
+        });
 
-      console.log("Account address:", account.accountAddress.toString());
-      console.log("Account derived:", account);
+        console.log("Account address:", account.accountAddress.toString());
+        console.log("Payload", payload);
 
-      console.log("Payload", payload);
+        const txn = await aptos.transaction.build.simple({
+            sender: account.accountAddress,
+            data: {
+                typeArguments: payload.typeArguments,
+                functionArguments: payload.functionArguments,
+                function: payload.function
+            },
+        });
 
-      const txn = await aptos.transaction.build.simple({
-        sender: account.accountAddress,
-        data: {
-          typeArguments: payload.typeArguments,
-          functionArguments: payload.functionArguments,
-          function: payload.function,
-        },
-      });
+            console.log("Transaction built:", txn);
 
-      console.log("Transaction built:", txn);
-
-      const committedTxn = await aptos.signAndSubmitTransaction({
-        signer: account,
-        transaction: txn,
-      });
-
-      console.log("Transaction submitted:", committedTxn);
-      const executedTransaction = await aptos.waitForTransaction({
-        transactionHash: committedTxn.hash,
-      });
-      return executedTransaction.hash;
-    } catch (error) {
-      console.error("Error sending transaction:", error);
-      throw new Error("Failed to send transaction");
+            const committedTxn = await aptos.signAndSubmitTransaction({
+                signer:account,
+                transaction:txn,
+            });
+            
+            console.log("Transaction submitted:", committedTxn);
+            const executedTransaction = await aptos.waitForTransaction({
+                transactionHash: committedTxn.hash,
+            });
+            return executedTransaction.hash;
+        } catch (error) {
+            console.error('Error sending transaction:', error);
+            throw new Error('Failed to send transaction');
+        }
     }
-  }
 
   async sendErrorMessage(chatId: number, errorMessage: string): Promise<void> {
     await this.bot.sendMessage(chatId, `❌ *Error:* ${errorMessage}`, {
@@ -746,59 +767,71 @@ class PlutusBot {
     await this.processCallbackData(chatId, data);
   }
 
-  private async processCallbackData(
-    chatId: number,
-    data: string
-  ): Promise<void> {
-    try {
-      if (data === "end_chat") {
-        this.sessionManager.resetSession(chatId);
-        await this.ui.sendMainMenu(
-          chatId,
-          !!this.sessionManager.getWallet(chatId)
-        );
-      } else if (data === "markets") {
-        await this.handleShowMarkets(chatId);
-      } else if (
-        data === "supply" ||
-        data === "withdraw" ||
-        data === "borrow" ||
-        data === "repay"
-      ) {
-        await this.handleShowMarkets(chatId, data as UserState);
-      } else if (data === "menu") {
-        this.sessionManager.resetSession(chatId);
-        const wallet = this.sessionManager.getWallet(chatId);
-        await this.ui.sendMainMenu(chatId, !!wallet);
-      } else if (data === "help") {
-        await this.ui.sendHelpMessage(chatId);
-      } else if (data === "connect_wallet") {
-        this.sessionManager.setState(chatId, "connect_wallet");
-        await this.ui.sendWalletConnectPrompt(chatId);
-      } else if (data === "wallet") {
-        await this.handleWalletInfo(chatId);
-      }
-      // Market-specific actions
-      else if (
-        data.startsWith("s_") ||
-        data.startsWith("b_") ||
-        data.startsWith("w_") ||
-        data.startsWith("r_")
-      ) {
-        await this.handleMarketSelection(chatId, data);
-      } else if (data === "confirm") {
-        await this.handleTransactionConfirmation(chatId);
-      } else {
-        console.log(`Unknown callback data: ${data}`);
-      }
-    } catch (error) {
-      console.error("Error processing callback:", error);
-      await this.ui.sendErrorMessage(
-        chatId,
-        "An unexpected error occurred. Please try again."
-      );
+    private async processCallbackData(chatId: number, data: string): Promise<void> {
+        try {
+            // Standard menu actions
+            if (data === 'markets') {
+                await this.handleShowMarkets(chatId);
+            }
+            else if (data === 'supply' || data === 'withdraw' || data === 'borrow' || data === 'repay') {
+                await this.handleShowMarkets(chatId, data as UserState);
+            }
+            else if (data === 'menu') {
+                this.sessionManager.resetSession(chatId);
+                const wallet = this.sessionManager.getWallet(chatId);
+                await this.ui.sendMainMenu(chatId, !!wallet);
+            }
+            else if (data === 'help') {
+                await this.ui.sendHelpMessage(chatId);
+            }
+            else if (data === 'connect_wallet') {
+                this.sessionManager.setState(chatId, 'connect_wallet');
+                await this.ui.sendWalletConnectPrompt(chatId);
+            }
+            else if (data === 'wallet') {
+                await this.handleWalletInfo(chatId);
+            }
+            // Market-specific actions
+            else if (data.startsWith('s_') || data.startsWith('b_') ||
+                data.startsWith('w_') || data.startsWith('r_')) {
+                await this.handleMarketSelection(chatId, data);
+            }
+            else if (data === 'confirm') {
+                await this.handleTransactionConfirmation(chatId);
+            }
+            else {
+                console.log(`Unknown callback data: ${data}`);
+            }
+        } catch (error) {
+            console.error('Error processing callback:', error);
+            await this.ui.sendErrorMessage(chatId, 'An unexpected error occurred. Please try again.');
+        }
     }
-  }
+
+    private async handleMessage(msg: TelegramBot.Message): Promise<void> {
+        if (!msg.text || msg.text.startsWith('/')) {
+            return;
+        }
+
+        const chatId = msg.chat.id;
+        const text = msg.text.trim();
+        const state = this.sessionManager.getState(chatId);
+
+        if (!state) {
+            return;
+        }
+
+        try {
+            if (state === 'connect_wallet') {
+                await this.handleWalletConnection(chatId, text);
+            } else if (state === 'supply' || state === 'withdraw' || state === 'borrow' || state === 'repay') {
+                await this.handleAmountInput(chatId, text, state);
+            }
+        } catch (error) {
+            console.error('Error handling message:', error);
+            await this.ui.sendErrorMessage(chatId, 'An unexpected error occurred. Please try again.');
+        }
+    }
 
   private async handleWalletConnection(
     chatId: number,
@@ -1000,41 +1033,39 @@ class PlutusBot {
     }
   }
 
-  private async handleTransactionConfirmation(chatId: number): Promise<void> {
-    console.log("Transaction Confirmation Started");
-    const state = this.sessionManager.getState(chatId);
-    const market = this.sessionManager.getCurrentMarket(chatId);
-    const amount = this.sessionManager.getAmount(chatId);
-    const payload = this.sessionManager.getPayload(chatId);
-    console.log("Payload:", payload);
-    if (!state || !market || !amount || !payload) {
-      await this.ui.sendErrorMessage(
-        chatId,
-        "Transaction details missing. Please try again."
-      );
-      return;
+    private async handleTransactionConfirmation(chatId: number): Promise<void> {
+        console.log("Transaction Confirmation Started");
+        const state = this.sessionManager.getState(chatId);
+        const market = this.sessionManager.getCurrentMarket(chatId);
+        const amount = this.sessionManager.getAmount(chatId);
+        const payload = this.sessionManager.getPayload(chatId);
+        console.log("Payload:", payload);
+        if (!state || !market || !amount || !payload) {
+            await this.ui.sendErrorMessage(chatId, 'Transaction details missing. Please try again.');
+            return;
+        }
+
+        try {
+            // Submit the transaction to the blockchain
+            const txHash = await this.ui.sendTransaction(payload);
+
+            await this.ui.sendSuccessMessage(
+                chatId,
+                `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}`
+            );
+
+            // Reset user state
+            this.sessionManager.resetSession(chatId);
+        } catch (error) {
+            console.error('Transaction submission error:', error);
+            await this.ui.sendErrorMessage(
+                chatId,
+                'Failed to submit transaction. Please try again later.'
+            );
+        }
     }
-
-    try {
-      // Submit the transaction to the blockchain
-      const txHash = await this.ui.sendTransaction(payload);
-
-      await this.ui.sendSuccessMessage(
-        chatId,
-        `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}`
-      );
-
-      // Reset user state
-      this.sessionManager.resetSession(chatId);
-    } catch (error) {
-      console.error("Transaction submission error:", error);
-      await this.ui.sendErrorMessage(
-        chatId,
-        "Failed to submit transaction. Please try again later."
-      );
-    }
-  }
 }
+
 
 // Run the bot
 try {
