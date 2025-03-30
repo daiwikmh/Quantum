@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, TrendingUp, TrendingDown, Wallet, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { getAccountPosition } from '../../apiClient';
 import { AccountPosition as AccountPositionType } from '../../lib/types';
 import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { Button } from '../ui/button';
 
 interface AccountPositionProps {
     address: string;
@@ -44,66 +43,61 @@ const AccountPosition: React.FC<AccountPositionProps> = ({ address, market }) =>
 
     if (loading) {
         return (
-            <Card>
-                <CardHeader>
-                    <CardTitle>Your Position</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex justify-center my-6">
-                        <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-primary"></div>
-                    </div>
-                </CardContent>
-            </Card>
+            <div className="flex justify-center my-6">
+                <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-primary"></div>
+            </div>
         );
     }
 
     if (!position) {
         return (
-            <Card>
-                <CardHeader>
-                    <CardTitle>Your Position</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <p className="text-muted-foreground">No position data available</p>
-                </CardContent>
-            </Card>
+            <div className="flex items-center gap-2 text-muted-foreground">
+                <AlertCircle className="h-4 w-4" />
+                <p>No position data available</p>
+            </div>
         );
     }
 
     return (
-        <Card>
-            <CardHeader>
-                <div className="flex justify-between items-center">
-                    <CardTitle>Your Position</CardTitle>
-                    <Button variant="ghost" size="icon" onClick={fetchPosition}>
-                        <RefreshCw className="h-4 w-4" />
-                    </Button>
-                </div>
-            </CardHeader>
-            <CardContent>
-                <div className="space-y-4">
-                    <div className="bg-muted/50 p-3 rounded-lg">
+        <div className="space-y-4">
+            <Button variant="ghost" size="sm" onClick={fetchPosition} className="absolute top-4 right-2">
+                <RefreshCw className="h-4 w-4" />
+            </Button>
+
+            <div className="space-y-3 mt-3">
+                <div className="bg-muted/50 p-3 rounded-lg">
+                    <div className="flex items-center gap-1 mb-1">
+                        <TrendingUp className="h-4 w-4 text-blue-500" />
                         <p className="text-sm text-muted-foreground">Supplied</p>
-                        <p className="text-xl font-bold text-blue-500">{formatAmount(position.supplied)}</p>
                     </div>
-
-                    <div className="bg-muted/50 p-3 rounded-lg">
-                        <p className="text-sm text-muted-foreground">Withdrawable</p>
-                        <p className="text-xl font-bold text-green-500">{formatAmount(position.withdrawable)}</p>
-                    </div>
-
-                    <div className="bg-muted/50 p-3 rounded-lg">
-                        <p className="text-sm text-muted-foreground">Borrowable</p>
-                        <p className="text-xl font-bold text-purple-500">{formatAmount(position.borrowable)}</p>
-                    </div>
-
-                    <div className="bg-muted/50 p-3 rounded-lg">
-                        <p className="text-sm text-muted-foreground">Liability</p>
-                        <p className="text-xl font-bold text-orange-500">{formatAmount(position.liability)}</p>
-                    </div>
+                    <p className="text-xl font-bold text-blue-500">{formatAmount(position.supplied)}</p>
                 </div>
-            </CardContent>
-        </Card>
+
+                <div className="bg-muted/50 p-3 rounded-lg">
+                    <div className="flex items-center gap-1 mb-1">
+                        <Wallet className="h-4 w-4 text-green-500" />
+                        <p className="text-sm text-muted-foreground">Withdrawable</p>
+                    </div>
+                    <p className="text-xl font-bold text-green-500">{formatAmount(position.withdrawable)}</p>
+                </div>
+
+                <div className="bg-muted/50 p-3 rounded-lg">
+                    <div className="flex items-center gap-1 mb-1">
+                        <TrendingUp className="h-4 w-4 text-purple-500" />
+                        <p className="text-sm text-muted-foreground">Borrowable</p>
+                    </div>
+                    <p className="text-xl font-bold text-purple-500">{formatAmount(position.borrowable)}</p>
+                </div>
+
+                <div className="bg-muted/50 p-3 rounded-lg">
+                    <div className="flex items-center gap-1 mb-1">
+                        <TrendingDown className="h-4 w-4 text-orange-500" />
+                        <p className="text-sm text-muted-foreground">Liability</p>
+                    </div>
+                    <p className="text-xl font-bold text-orange-500">{formatAmount(position.liability)}</p>
+                </div>
+            </div>
+        </div>
     );
 };
 

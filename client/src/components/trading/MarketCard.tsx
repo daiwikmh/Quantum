@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Market } from '../../lib/types';
 import { cn } from '../../lib/utils';
-
+import { TrendingUp, TrendingDown } from 'lucide-react';
 
 interface MarketCardProps {
     market: Market;
@@ -34,33 +34,42 @@ export const marketMap = {
     '0x7ddb4d65b24dfcaf3a2a2e6e64b71349df948c5f953d2017bb996ab316e8d105': 'APT/MOD',
     '0x35fb00570cd95b0f4134c7c54e7db677c76fd1580b263851759e3173c8f06c85': 'APT/EUSDY',
     '0xd8eeb8987449d95e4d934c317022ab1f442c9e494c187846894e14c8e04fe5dd': 'APT/ABTC'
-
-}
+};
 
 const MarketCard: React.FC<MarketCardProps> = ({ market, isSelected, onClick }) => {
-    const id = market.id
+    const id = market.id;
     return (
         <Card
             className={cn(
-                "cursor-pointer transition-all hover:shadow-lg",
-                isSelected && "border-primary"
+                "cursor-pointer transition-all hover:shadow-lg border border-border/50",
+                isSelected && "border-primary border-2"
             )}
             onClick={onClick}
         >
             <CardHeader className="pb-2">
                 <CardTitle className="flex justify-between items-center">
-                    <span>{marketMap[id as keyof typeof marketMap] || 'Unknown Market'}</span>
-                    <span className="text-sm text-muted-foreground">{formatPrice(market.price)}</span>
+                    <span className="flex items-center gap-2">
+                        {marketMap[id as keyof typeof marketMap] || 'Unknown Market'}
+                    </span>
+                    <span className="text-sm font-medium bg-primary/10 text-primary px-2 py-1 rounded-full">
+                        {formatPrice(market.price)}
+                    </span>
                 </CardTitle>
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-2 gap-2">
                     <div className="bg-muted/50 p-3 rounded-lg">
-                        <p className="text-sm text-muted-foreground">Supply APR</p>
+                        <div className="flex items-center gap-1 mb-1">
+                            <TrendingUp className="h-4 w-4 text-green-500" />
+                            <p className="text-sm text-muted-foreground">Supply APR</p>
+                        </div>
                         <p className="text-xl font-bold text-green-500">{formatPercent(market.supplyApr)}</p>
                     </div>
                     <div className="bg-muted/50 p-3 rounded-lg">
-                        <p className="text-sm text-muted-foreground">Borrow APR</p>
+                        <div className="flex items-center gap-1 mb-1">
+                            <TrendingDown className="h-4 w-4 text-orange-500" />
+                            <p className="text-sm text-muted-foreground">Borrow APR</p>
+                        </div>
                         <p className="text-xl font-bold text-orange-500">{formatPercent(market.borrowApr)}</p>
                     </div>
                 </div>

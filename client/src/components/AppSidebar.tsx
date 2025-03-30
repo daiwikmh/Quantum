@@ -1,6 +1,5 @@
 import {
     LayoutDashboard,
-    LineChart,
     ArrowLeftRight,
     UserCircle,
     Wallet,
@@ -26,7 +25,6 @@ const sidebarItems = [
     { icon: LayoutDashboard, label: "Dashboard", href: "/profile" },
     { icon: ArrowLeftRight, label: "Agent", href: "/agent" },
     { icon: ArrowLeftRight, label: "Trading", href: "/trading" },
-    { icon: LineChart, label: "Trading View", href: "/trading-view" },
 ];
 
 export function AppSidebar() {
