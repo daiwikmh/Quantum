@@ -1,6 +1,6 @@
 
 import { Navigate, Route, Routes } from "react-router"
-import Profile from "./Profile"
+import Profile from "./profile"
 import TradingPage from "./TradingPage"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/AppSidebar"
