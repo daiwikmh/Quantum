@@ -10,6 +10,7 @@ import { EmptyWalletState } from "../components/wallets/EmptyWalletState";
 import { SendTransactionDialog } from "../components/transactions/sendTransactionDialog";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import AptosWallet from "../components/wallets/AptosWallet";
+import Subscibe from "@/components/Subscibe";
 
 const Profile = () => {
     const { wallets } = useWallets();
@@ -79,6 +80,9 @@ const Profile = () => {
                 setAmount={setAmount}
                 sendTransaction={sendTransaction}
             />
+
+
+            <Subscibe />
         </div>
     );
 };
