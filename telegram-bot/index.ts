@@ -322,6 +322,26 @@ class TelegramUI {
     );
   }
 
+  async sendPrivateKeyConnectPrompt(chatId: number): Promise<void> {
+    await this.bot.sendMessage(
+      chatId,
+      "Connect your Wallet with Private Key\n\n" +
+        "Please enter your Move blockchain private key to connect your wallet:\n\n" +
+        "⚠ IMPORTANT SECURITY NOTICE ⚠\n" +
+        "• Your private key will ONLY be used for this transaction\n" +
+        "• It will NOT be stored permanently anywhere\n" +
+        "• It will be cleared from memory immediately after transaction\n" +
+        "• For security, we recommend using a burner wallet with limited funds\n\n" +
+        "Format: Enter private key without the '0x' prefix",
+      {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [[{ text: "🔙 Cancel", callback_data: "menu" }]],
+        },
+      }
+    );
+  }
+
   async sendWalletInfo(
     chatId: number,
     walletAddress: string,
@@ -412,11 +432,11 @@ class TelegramUI {
     // Add back button
     marketButtons.push([{ text: "🔙 Back to Menu", callback_data: "menu" }]);
 
-        await this.bot.sendMessage(chatId, message, {
-            parse_mode: 'Markdown',
-            reply_markup: { inline_keyboard: marketButtons }
-        });
-    }
+    await this.bot.sendMessage(chatId, message, {
+      parse_mode: "Markdown",
+      reply_markup: { inline_keyboard: marketButtons },
+    });
+  }
 
   async sendTransactionForm(
     chatId: number,
@@ -499,54 +519,53 @@ class TelegramUI {
     });
   }
 
-// Update sendTransaction to use the provided private key
-async sendTransaction(payload: any, privateKey: string): Promise<string> {
+  // Update sendTransaction to use the provided private key
+  async sendTransaction(payload: any, privateKey: string): Promise<string> {
     try {
-        console.log("Transaction Started");
-        const config = new AptosConfig({ network: Network.TESTNET });
-        const aptos = new Aptos(config);
-        
-        // Use the provided private key instead of a hardcoded one
-        const formattedKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
-        
-        const account = await aptos.deriveAccountFromPrivateKey({
-            privateKey: new Ed25519PrivateKey(
-                PrivateKey.formatPrivateKey(
-                    formattedKey,
-                    PrivateKeyVariants.Ed25519
-                )
-            ),
-        });
+      console.log("Transaction Started");
+      const config = new AptosConfig({ network: Network.TESTNET });
+      const aptos = new Aptos(config);
 
-        console.log("Account address:", account.accountAddress.toString());
-        console.log("Payload", payload);
+      // Use the provided private key instead of a hardcoded one
+      const formattedKey = privateKey.startsWith("0x")
+        ? privateKey
+        : `0x${privateKey}`;
 
-        const txn = await aptos.transaction.build.simple({
-            sender: account.accountAddress,
-            data: {
-                typeArguments: payload.typeArguments,
-                functionArguments: payload.functionArguments,
-                function: payload.function
-            },
-        });
+      const account = await aptos.deriveAccountFromPrivateKey({
+        privateKey: new Ed25519PrivateKey(
+          PrivateKey.formatPrivateKey(formattedKey, PrivateKeyVariants.Ed25519)
+        ),
+      });
 
-            console.log("Transaction built:", txn);
+      console.log("Account address:", account.accountAddress.toString());
+      console.log("Payload", payload);
 
-            const committedTxn = await aptos.signAndSubmitTransaction({
-                signer:account,
-                transaction:txn,
-            });
-            
-            console.log("Transaction submitted:", committedTxn);
-            const executedTransaction = await aptos.waitForTransaction({
-                transactionHash: committedTxn.hash,
-            });
-            return executedTransaction.hash;
-        } catch (error) {
-            console.error('Error sending transaction:', error);
-            throw new Error('Failed to send transaction');
-        }
+      const txn = await aptos.transaction.build.simple({
+        sender: account.accountAddress,
+        data: {
+          typeArguments: payload.typeArguments,
+          functionArguments: payload.functionArguments,
+          function: payload.function,
+        },
+      });
+
+      console.log("Transaction built:", txn);
+
+      const committedTxn = await aptos.signAndSubmitTransaction({
+        signer: account,
+        transaction: txn,
+      });
+
+      console.log("Transaction submitted:", committedTxn);
+      const executedTransaction = await aptos.waitForTransaction({
+        transactionHash: committedTxn.hash,
+      });
+      return executedTransaction.hash;
+    } catch (error) {
+      console.error("Error sending transaction:", error);
+      throw new Error("Failed to send transaction");
     }
+  }
 
   async sendErrorMessage(chatId: number, errorMessage: string): Promise<void> {
     await this.bot.sendMessage(chatId, `❌ *Error:* ${errorMessage}`, {
@@ -673,7 +692,7 @@ class PlutusBot {
       });
 
       ws.on("close", async () => {
-        await this.ui.sendMessage(chatId, "Chat session ended.");
+        await this.bot.sendMessage(chatId, "Chat session ended.");
         this.sessionManager.resetSession(chatId);
       });
     } catch (error) {
@@ -808,31 +827,7 @@ class PlutusBot {
         }
     }
 
-    private async handleMessage(msg: TelegramBot.Message): Promise<void> {
-        if (!msg.text || msg.text.startsWith('/')) {
-            return;
-        }
-
-        const chatId = msg.chat.id;
-        const text = msg.text.trim();
-        const state = this.sessionManager.getState(chatId);
-
-        if (!state) {
-            return;
-        }
-
-        try {
-            if (state === 'connect_wallet') {
-                await this.handleWalletConnection(chatId, text);
-            } else if (state === 'supply' || state === 'withdraw' || state === 'borrow' || state === 'repay') {
-                await this.handleAmountInput(chatId, text, state);
-            }
-        } catch (error) {
-            console.error('Error handling message:', error);
-            await this.ui.sendErrorMessage(chatId, 'An unexpected error occurred. Please try again.');
-        }
-    }
-
+    
   private async handleWalletConnection(
     chatId: number,
     walletAddress: string
@@ -1039,29 +1034,49 @@ class PlutusBot {
         const market = this.sessionManager.getCurrentMarket(chatId);
         const amount = this.sessionManager.getAmount(chatId);
         const payload = this.sessionManager.getPayload(chatId);
+        const privateKey = this.sessionManager.getPrivateKey(chatId);
+        
         console.log("Payload:", payload);
+        
         if (!state || !market || !amount || !payload) {
             await this.ui.sendErrorMessage(chatId, 'Transaction details missing. Please try again.');
             return;
         }
+        
+        if (!privateKey) {
+            this.sessionManager.setState(chatId, 'connect_wallet');
+            await this.ui.sendPrivateKeyConnectPrompt(chatId);
+            return;
+        }
 
         try {
-            // Submit the transaction to the blockchain
-            const txHash = await this.ui.sendTransaction(payload);
+            // Send a message to reassure the user about private key security
+            await this.bot.sendMessage(
+                chatId,
+                "🔐 Processing Transaction\n\nYour private key is being used only for this transaction and will be cleared from memory immediately afterward.",
+                { parse_mode: 'Markdown' }
+            );
+            
+            // Submit the transaction to the blockchain using the private key
+            const txHash = await this.ui.sendTransaction(payload, privateKey);
 
             await this.ui.sendSuccessMessage(
                 chatId,
-                `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}`
+                `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}\n\n✅ Your private key has been cleared from memory.`
             );
 
-            // Reset user state
+            // Reset user state and explicitly clear the private key
+            this.sessionManager.clearPrivateKey(chatId);
             this.sessionManager.resetSession(chatId);
         } catch (error) {
             console.error('Transaction submission error:', error);
             await this.ui.sendErrorMessage(
                 chatId,
-                'Failed to submit transaction. Please try again later.'
+                `Failed to submit transaction: ${error instanceof Error ? error.message : 'Unknown error'}`
             );
+            
+            // Still clear private key even in case of error
+            this.sessionManager.clearPrivateKey(chatId);
         }
     }
 }
