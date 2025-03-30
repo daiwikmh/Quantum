@@ -1,61 +1,31 @@
-import { Route, Routes, useNavigate } from "react-router";
-import "./App.css";
 
-import { usePrivy } from "@privy-io/react-auth";
-import HomeAfterLogin from "./pages/HomeAfterLogin";
-import { addUserToDatabase } from "./apiClient";
-import { useEffect } from "react";
-import Home from "./pages/Home";
-import { LoginCallBack } from "@opencampus/ocid-connect-js";
-import { toast } from "sonner";
+import './App.css'
+
+
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import HomeBeforeLogin from './pages/HomeBeforeLogin';
+import HomeAfterLogin from './pages/HomeAfterLogin';
 
 
 function App() {
-  const navigate = useNavigate();
-  const { authenticated, user } = usePrivy();
-  
-  useEffect(() => {
-    if (authenticated) {
-      addUserToDatabase(user);
-    }
-  }, [user]);
 
-  const loginSuccess = () => {
-    toast.success("Open Campus Connect Successful");
-    navigate("/profile");
-  };
-
-  const loginError = () => {
-    toast.error("Open Campus Connect Failed");
-    navigate("/profile");
-  };
+  const { authenticated } = usePrivy();
+  // console.log(JSON.stringify(user));
+  const { wallets } = useWallets();
+  console.log(JSON.stringify(wallets));
 
   return (
     <>
       {authenticated ? (
         <HomeAfterLogin />
       ) : (
-        <>
-          <Home />
-          <Routes>
-            <Route
-              path="/redirect"
-              element={
-                <LoginCallBack
-                  errorCallback={loginError}
-                  successCallback={loginSuccess}
-                  customErrorComponent={undefined}
-                  customLoadingComponent={undefined}
-                />
-              }
-            />
-
-
-          </Routes>
-        </>
+          <HomeBeforeLogin />
+          
       )}
     </>
-  );
+
+
+  )
 }
 
-export default App;
+export default App

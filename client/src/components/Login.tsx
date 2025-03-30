@@ -13,9 +13,13 @@ export default function Login() {
     const { authenticated, user, linkWallet } = usePrivy();
     const { login } = useLogin({
         onComplete: async () => {
-            await addUserToDatabase(user);
-            if (!user?.wallet?.address) {
-                setIsModalOpen(true);
+            if (user) {
+                await addUserToDatabase(user);
+                if (!user.wallet?.address) {
+                    setIsModalOpen(true);
+                } else {
+                    navigate("/profile");
+                }
             }
         },
         onError: (error) => {
@@ -27,7 +31,7 @@ export default function Login() {
 
     const handleCreateSEmbeddedWallet = async () => {
         try {
-            createWallet();
+            await createWallet();
             navigate("/profile");
         } catch (error) {
             console.error("Error creating server wallet:", error);
@@ -36,13 +40,14 @@ export default function Login() {
 
     return (
         <>
-            {!authenticated &&
-                (
-                    <Button className="px-6 py-2 bg-black text-white rounded-full hover:bg-white hover:text-black transition-colors"
-                        onClick={login}>
-                        Log In
-                    </Button>
-                )}
+            {!authenticated && (
+                <Button
+                    className="px-6 py-2 bg-black text-white rounded-full hover:bg-white hover:text-black transition-colors"
+                    onClick={login}
+                >
+                    Log In
+                </Button>
+            )}
 
             {/* Modal for post-login actions */}
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>

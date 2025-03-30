@@ -61,6 +61,18 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ type, market, walletA
 
             console.log(txResponse);
             toast.success(`Your ${type} transaction has been processed successfully.`);
+            toast.success(
+                <div>
+                    <a 
+                        href={`https://explorer.aptoslabs.com/txn/${txResponse}?network=testnet`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#3366ff', textDecoration: 'underline', cursor: 'pointer' }}
+                    >
+                        View Transaction Hash
+                    </a>
+                </div>
+            );
             setAmount('0');
             fetchPosition();
         } catch (error) {
