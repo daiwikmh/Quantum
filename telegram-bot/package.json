@@ -17,6 +17,10 @@
     "typescript": "^5.8.2"
   },
   "dependencies": {
+    "@aptos-labs/ts-sdk": "^1.37.1",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
+    "node-fetch": "^3.3.2",
     "node-telegram-bot-api": "^0.66.0"
   }
 }

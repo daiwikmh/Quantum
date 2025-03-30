@@ -1,8 +1,29 @@
 import TelegramBot from 'node-telegram-bot-api';
-const API_URL = 'https://plutus-move.onrender.com';
+import dotenv from 'dotenv';
+import { fetchWithTimeout } from './utils';
+import {
+    Aptos,
+    AptosConfig,
+    Account,
+    Network,
+    Ed25519PrivateKey,
+    PrivateKey,
+    PrivateKeyVariants,
+} from "@aptos-labs/ts-sdk";
 
-const BOT_TOKEN = '7871171849:AAF0XJN4b-DGjLJu8ltNLiqDMmY5620JjjE';
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+// Load environment variables
+dotenv.config();
+
+// Constants
+const API_URL = process.env.API_URL || 'https://plutus-move.onrender.com';
+const BOT_TOKEN = process.env.BOT_TOKEN;
+
+if (!BOT_TOKEN) {
+    console.error('BOT_TOKEN is missing in environment variables');
+    process.exit(1);
+}
+
+const API_TIMEOUT = 1000000; // 10 seconds timeout for API calls
 
 // Define types
 interface Market {
@@ -11,475 +32,819 @@ interface Market {
     supplyApr: number;
     borrowApr: number;
     price: number;
+    name?: string;       // Added name for better display
+    symbol?: string;     // Added symbol for better display
+    decimals?: number;   // Added decimals for amount formatting
 }
 
-type UserState = 'supply' | 'withdraw' | 'borrow' | 'repay' | null;
-
-// Track user states and market selections to handle multi-step interactions
-const userStates = new Map<number, UserState>();
-const userMarketSelections = new Map<number, Market[]>(); // Store full market objects
-const userCurrentMarket = new Map<number, Market>(); // Store currently selected market
-
-// Start command handler
-bot.onText(/\/start/, (msg) => {
-    const chatId = msg.chat.id;
-    sendMainMenu(chatId);
-});
-
-// Help command handler
-bot.onText(/\/help/, (msg) => {
-    const chatId = msg.chat.id;
-    sendHelpMessage(chatId);
-});
-
-// Function to send the main menu with buttons
-function sendMainMenu(chatId: number) {
-    const options = {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: '📊 Show Markets', callback_data: 'markets' }
-                ],
-                [
-                    { text: '💰 Supply Tokens', callback_data: 'supply' },
-                    { text: '🔄 Withdraw Tokens', callback_data: 'withdraw' }
-                ],
-                [
-                    { text: '💸 Borrow Tokens', callback_data: 'borrow' },
-                    { text: '💵 Repay Tokens', callback_data: 'repay' }
-                ],
-                [
-                    { text: '❓ Help', callback_data: 'help' }
-                ]
-            ]
-        }
-    };
-
-    bot.sendMessage(
-        chatId,
-        "Welcome to the Plutus Move Bot! What would you like to do?",
-        options
-    );
+interface UserPosition {
+    marketId: string;
+    supplied: number;
+    borrowed: number;
 }
 
-// Handle callback queries (button clicks)
-bot.on('callback_query', async (callbackQuery) => {
-    const chatId = callbackQuery.message?.chat.id;
-    if (!chatId) {
-        console.error('Callback query message or chat ID is undefined.');
-        return;
+interface User {
+    telegramId: number;
+    walletAddress?: string;
+}
+
+type UserState = 'supply' | 'withdraw' | 'borrow' | 'repay' | 'connect_wallet' | null;
+
+// Session management
+class SessionManager {
+    private userStates = new Map<number, UserState>();
+    private userMarketSelections = new Map<number, Market[]>();
+    private userCurrentMarket = new Map<number, Market>();
+    private userWallets = new Map<number, string>();
+    private userAmounts = new Map<number, number>();
+    private userPayloads = new Map<number, any>();  // Added to store transaction payloads
+
+    // State management
+    getState(chatId: number): UserState {
+        return this.userStates.get(chatId) || null;
     }
 
-    const data = callbackQuery.data;
-    if (!data) {
-        console.error('Callback data is undefined.');
-        return;
+    setState(chatId: number, state: UserState): void {
+        this.userStates.set(chatId, state);
     }
 
-    console.log(`Received callback data: ${data}`);
-
-    // Acknowledge the button click
-    try {
-        await bot.answerCallbackQuery(callbackQuery.id);
-    } catch (error) {
-        console.error('Error answering callback query:', error);
+    // Market management
+    setMarkets(chatId: number, markets: Market[]): void {
+        this.userMarketSelections.set(chatId, markets);
     }
 
-    // Standard menu actions
-    if (data === 'markets') {
-        await handleMarkets(chatId);
+    getMarkets(chatId: number): Market[] | undefined {
+        return this.userMarketSelections.get(chatId);
     }
-    else if (data === 'supply' || data === 'withdraw' || data === 'borrow' || data === 'repay') {
-        // For these actions, we first need to show markets to select from
-        await handleMarkets(chatId, data as UserState);
+
+    setCurrentMarket(chatId: number, market: Market): void {
+        this.userCurrentMarket.set(chatId, market);
     }
-    else if (data === 'menu') {
-        userStates.delete(chatId);
-        userMarketSelections.delete(chatId);
-        userCurrentMarket.delete(chatId);
-        sendMainMenu(chatId);
+
+    getCurrentMarket(chatId: number): Market | undefined {
+        return this.userCurrentMarket.get(chatId);
     }
-    else if (data === 'help') {
-        sendHelpMessage(chatId);
+
+    // Wallet management
+    setWallet(chatId: number, address: string): void {
+        this.userWallets.set(chatId, address);
     }
-    // Market-specific actions using numeric indexes
-    else if (data.startsWith('s_')) {
-        const marketIndex = parseInt(data.substring(2)); // Get market index
-        const markets = userMarketSelections.get(chatId);
-        
-        if (!markets || marketIndex >= markets.length) {
-            bot.sendMessage(chatId, "Market selection error. Please try again.", {
-                reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Markets', callback_data: 'markets' }]]
-                }
+
+    getWallet(chatId: number): string | undefined {
+        return this.userWallets.get(chatId);
+    }
+
+    // Amount management
+    setAmount(chatId: number, amount: number): void {
+        this.userAmounts.set(chatId, amount);
+    }
+
+    getAmount(chatId: number): number | undefined {
+        return this.userAmounts.get(chatId);
+    }
+
+    // Payload management
+    setPayload(chatId: number, payload: any): void {
+        this.userPayloads.set(chatId, payload);
+    }
+
+    getPayload(chatId: number): any | undefined {
+        return this.userPayloads.get(chatId);
+    }
+
+    // Reset user session
+    resetSession(chatId: number): void {
+        this.userStates.delete(chatId);
+        this.userCurrentMarket.delete(chatId);
+        this.userAmounts.delete(chatId);
+        this.userPayloads.delete(chatId);
+        // Don't delete wallet address or markets as they can be reused
+    }
+}
+
+// API Service
+class PlutusAPI {
+    private baseUrl: string;
+
+    constructor(baseUrl: string) {
+        this.baseUrl = baseUrl;
+    }
+
+    async getMarkets(): Promise<Market[]> {
+        try {
+            const response = await fetchWithTimeout(`${this.baseUrl}/api/markets`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' },
+                timeout: API_TIMEOUT
             });
-            return;
-        }
 
-        const selectedMarket = markets[marketIndex];
-        userCurrentMarket.set(chatId, selectedMarket);
-        userStates.set(chatId, 'supply');
-
-        bot.sendMessage(
-            chatId,
-            `Please provide the amount to supply to market:\n` +
-            `Market ID: ${selectedMarket.id}\n` +
-            `Coin Address: ${selectedMarket.coinAddress}\n` +
-            `Current Supply APR: ${selectedMarket.supplyApr}%\n\n` +
-            `Just enter the amount (e.g., 10):`,
-            {
-                reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Markets', callback_data: 'markets' }]]
-                }
+            if (!response.ok) {
+                throw new Error(`Failed to fetch markets: ${response.status} ${response.statusText}`);
             }
-        );
+
+            return await response.json();
+        } catch (error) {
+            console.error('Market fetch error:', error);
+            throw error;
+        }
     }
-    else if (data.startsWith('b_')) {
-        const marketIndex = parseInt(data.substring(2)); // Get market index
-        const markets = userMarketSelections.get(chatId);
-        
-        if (!markets || marketIndex >= markets.length) {
-            bot.sendMessage(chatId, "Market selection error. Please try again.", {
-                reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Markets', callback_data: 'markets' }]]
-                }
+
+    async getUserPositions(walletAddress: string): Promise<UserPosition[]> {
+        try {
+            const response = await fetchWithTimeout(`${this.baseUrl}/api/user/${walletAddress}/positions`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' },
+                timeout: API_TIMEOUT
             });
-            return;
-        }
 
-        const selectedMarket = markets[marketIndex];
-        userCurrentMarket.set(chatId, selectedMarket);
-        userStates.set(chatId, 'borrow');
-
-        bot.sendMessage(
-            chatId,
-            `Please provide the amount to borrow from market:\n` +
-            `Market ID: ${selectedMarket.id}\n` +
-            `Coin Address: ${selectedMarket.coinAddress}\n` +
-            `Current Borrow APR: ${selectedMarket.borrowApr}%\n\n` +
-            `Just enter the amount (e.g., 5):`,
-            {
-                reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Markets', callback_data: 'markets' }]]
-                }
+            if (!response.ok) {
+                throw new Error(`Failed to fetch user positions: ${response.status} ${response.statusText}`);
             }
-        );
+
+            return await response.json();
+        } catch (error) {
+            console.error('User positions fetch error:', error);
+            throw error;
+        }
     }
-    else if (data.startsWith('w_')) {
-        const marketIndex = parseInt(data.substring(2)); // Get market index
-        const markets = userMarketSelections.get(chatId);
-        
-        if (!markets || marketIndex >= markets.length) {
-            bot.sendMessage(chatId, "Market selection error. Please try again.", {
-                reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Markets', callback_data: 'markets' }]]
-                }
+
+    async createTransactionPayload(
+        type: UserState,
+        coinAddress: string,
+        marketId: string,
+        amount: number,
+        walletAddress: string
+    ): Promise<any> {
+        try {
+            const response = await fetchWithTimeout(`${this.baseUrl}/api/transaction/payload`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                timeout: API_TIMEOUT,
+                body: JSON.stringify({
+                    type,
+                    coinAddress,
+                    market: marketId,
+                    amount,
+                    walletAddress
+                }),
             });
-            return;
+
+            if (!response.ok) {
+                throw new Error(`Failed to create transaction payload: ${response.status} ${response.statusText}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Transaction payload error:', error);
+            throw error;
         }
-
-        const selectedMarket = markets[marketIndex];
-        userCurrentMarket.set(chatId, selectedMarket);
-        userStates.set(chatId, 'withdraw');
-
-        bot.sendMessage(
-            chatId,
-            `Please provide the amount to withdraw from market:\n` +
-            `Market ID: ${selectedMarket.id}\n` +
-            `Coin Address: ${selectedMarket.coinAddress}\n\n` +
-            `Just enter the amount (e.g., 5):`,
-            {
-                reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Markets', callback_data: 'markets' }]]
-                }
-            }
-        );
     }
-    else if (data.startsWith('r_')) {
-        const marketIndex = parseInt(data.substring(2)); // Get market index
-        const markets = userMarketSelections.get(chatId);
-        
-        if (!markets || marketIndex >= markets.length) {
-            bot.sendMessage(chatId, "Market selection error. Please try again.", {
-                reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Markets', callback_data: 'markets' }]]
-                }
-            });
-            return;
-        }
+}
 
-        const selectedMarket = markets[marketIndex];
-        userCurrentMarket.set(chatId, selectedMarket);
-        userStates.set(chatId, 'repay');
+// UI Helper
+class TelegramUI {
+    private bot: TelegramBot;
 
-        bot.sendMessage(
-            chatId,
-            `Please provide the amount to repay to market:\n` +
-            `Market ID: ${selectedMarket.id}\n` +
-            `Coin Address: ${selectedMarket.coinAddress}\n\n` +
-            `Just enter the amount (e.g., 3):`,
-            {
-                reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Markets', callback_data: 'markets' }]]
-                }
-            }
-        );
-    }
-    else if (data === 'confirm') {
-        // In a real implementation, you would process the transaction here
-        bot.sendMessage(
-            chatId,
-            "Transaction submitted successfully!",
-            {
-                reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]]
-                }
-            }
-        );
-
-        // Reset user state
-        userStates.delete(chatId);
-        userMarketSelections.delete(chatId);
-        userCurrentMarket.delete(chatId);
-    }
-    else {
-        console.log(`Unknown callback data: ${data}`);
-    }
-});
-
-// Handle text messages for transaction data input
-bot.on('message', async (msg) => {
-    if (!msg.text || msg.text.startsWith('/')) {
-        return;
+    constructor(bot: TelegramBot) {
+        this.bot = bot;
     }
 
-    const chatId = msg.chat.id;
-    const text = msg.text;
-    const userState = userStates.get(chatId);
-    const selectedMarket = userCurrentMarket.get(chatId);
+    async sendMainMenu(chatId: number, walletConnected: boolean = false): Promise<void> {
+        const walletRow = walletConnected
+            ? [{ text: '👛 My Wallet', callback_data: 'wallet' }]
+            : [{ text: '🔗 Connect Wallet', callback_data: 'connect_wallet' }];
 
-    // If no state or no selected market, ignore
-    if (!userState || !selectedMarket) {
-        return;
-    }
-
-    // Check if input is a valid number
-    const amountStr = text.trim();
-    const amount = parseFloat(amountStr);
-
-    if (isNaN(amount) || amount <= 0) {
-        bot.sendMessage(
-            chatId,
-            "Please enter a valid positive number for the amount.",
-            {
-                reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]]
-                }
-            }
-        );
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_URL}/api/transaction/payload`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                type: userState,
-                coinAddress: selectedMarket.coinAddress,
-                market: selectedMarket.id,
-                amount
-            }),
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to create ${userState} transaction payload`);
-        }
-
-        const { payload } = await response.json();
-
-        bot.sendMessage(
-            chatId,
-            `${userState.charAt(0).toUpperCase() + userState.slice(1)} Transaction Payload Created:\n` +
-            `Market ID: ${selectedMarket.id}\n` +
-            `Coin Address: ${selectedMarket.coinAddress}\n` +
-            `Amount: ${amount}\n\n` +
-            `Payload: ${JSON.stringify(payload, null, 2)}`,
-            {
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: '✅ Confirm Transaction', callback_data: 'confirm' }
-                        ],
-                        [
-                            { text: '❌ Cancel', callback_data: 'menu' }
-                        ]
+        const options = {
+            reply_markup: {
+                inline_keyboard: [
+                    walletRow,
+                    [
+                        { text: '📊 Show Markets', callback_data: 'markets' }
+                    ],
+                    [
+                        { text: '💰 Supply Tokens', callback_data: 'supply' },
+                        { text: '🔄 Withdraw Tokens', callback_data: 'withdraw' }
+                    ],
+                    [
+                        { text: '💸 Borrow Tokens', callback_data: 'borrow' },
+                        { text: '💵 Repay Tokens', callback_data: 'repay' }
+                    ],
+                    [
+                        { text: '❓ Help', callback_data: 'help' }
                     ]
-                }
-            }
-        );
+                ]
+            },
+            parse_mode: 'Markdown' as const
+        };
 
-    } catch (error) {
-        console.error('API request error:', error);
-        bot.sendMessage(
+        await this.bot.sendMessage(
             chatId,
-            `Error creating ${userState} transaction. Please try again later.`,
-            {
-                reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]]
-                }
-            }
+            "Welcome to the *Plutus Move Bot*!\nYour gateway to DeFi on the Move blockchain.",
+            options
         );
     }
-});
 
-// Function to handle market data retrieval and display with action buttons
-const handleMarkets = async (chatId: number, initialAction: UserState = null) => {
-    try {
-        console.log('Attempting to fetch markets from API...');
-        const response = await fetch(`${API_URL}/api/markets`, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
+    async sendWalletInfo(chatId: number, walletAddress: string, positions?: UserPosition[]): Promise<void> {
+        let message = `*Your Wallet*\n\nAddress: \`${walletAddress}\`\n\n`;
+
+        if (positions && positions.length > 0) {
+            message += "*Your Positions:*\n\n";
+            positions.forEach(position => {
+                message += `Market: ${position.marketId}\n`;
+                message += `Supplied: ${position.supplied}\n`;
+                message += `Borrowed: ${position.borrowed}\n\n`;
+            });
+        } else {
+            message += "You don't have any active positions yet.";
+        }
+
+        await this.bot.sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Back to Menu', callback_data: 'menu' }]
+                ]
+            }
         });
+    }
 
-        if (!response.ok) {
-            throw new Error(`Failed to fetch markets: ${response.status} ${response.statusText}`);
-        }
+    async sendMarketsList(
+        chatId: number,
+        markets: Market[],
+        initialAction: UserState = null
+    ): Promise<void> {
+        let message = '*Available Markets:*\n\n';
 
-        const markets: Market[] = await response.json();
-
-        if (!markets || markets.length === 0) {
-            bot.sendMessage(
-                chatId,
-                'No markets available at the moment.',
-                {
-                    reply_markup: {
-                        inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]]
-                    }
-                }
-            );
-            return;
-        }
-
-        // Store all market objects for reference
-        userMarketSelections.set(chatId, markets);
-
-        let message = 'Available Markets:\n\n';
         markets.forEach((market, index) => {
-            message += `Market #${index + 1}:\n`;
-            message += `ID: ${market.id}\n`;
-            message += `Coin Address: ${market.coinAddress}\n`;
+            const name = market.name || `Market #${index + 1}`;
+            const symbol = market.symbol ? ` (${market.symbol})` : '';
+
+            message += `*${name}${symbol}*\n`;
+            message += `ID: \`${market.id}\`\n`;
+            message += `Coin Address: \`${market.coinAddress}\`\n`;
             message += `Supply APR: ${market.supplyApr}%\n`;
             message += `Borrow APR: ${market.borrowApr}%\n`;
-            message += `Price: $${market.price}\n\n`;
+            message += `Price: $${market.price.toFixed(2)}\n\n`;
         });
-
-        console.log("Message prepared");
 
         // Create action buttons for each market based on the initial action
         const marketButtons = [];
-        
+
         if (initialAction === 'supply') {
-            // Only show supply buttons
-            markets.forEach((_, index) => {
-                marketButtons.push([{ text: `Supply to Market #${index + 1}`, callback_data: `s_${index}` }]);
+            markets.forEach((market, index) => {
+                const name = market.name || `Market #${index + 1}`;
+                marketButtons.push([{ text: `Supply to ${name}`, callback_data: `s_${index}` }]);
             });
-        } 
+        }
         else if (initialAction === 'borrow') {
-            // Only show borrow buttons
-            markets.forEach((_, index) => {
-                marketButtons.push([{ text: `Borrow from Market #${index + 1}`, callback_data: `b_${index}` }]);
+            markets.forEach((market, index) => {
+                const name = market.name || `Market #${index + 1}`;
+                marketButtons.push([{ text: `Borrow from ${name}`, callback_data: `b_${index}` }]);
             });
         }
         else if (initialAction === 'withdraw') {
-            // Only show withdraw buttons
-            markets.forEach((_, index) => {
-                marketButtons.push([{ text: `Withdraw from Market #${index + 1}`, callback_data: `w_${index}` }]);
+            markets.forEach((market, index) => {
+                const name = market.name || `Market #${index + 1}`;
+                marketButtons.push([{ text: `Withdraw from ${name}`, callback_data: `w_${index}` }]);
             });
         }
         else if (initialAction === 'repay') {
-            // Only show repay buttons
-            markets.forEach((_, index) => {
-                marketButtons.push([{ text: `Repay to Market #${index + 1}`, callback_data: `r_${index}` }]);
+            markets.forEach((market, index) => {
+                const name = market.name || `Market #${index + 1}`;
+                marketButtons.push([{ text: `Repay to ${name}`, callback_data: `r_${index}` }]);
             });
         }
         else {
-            // Show all options
-            markets.forEach((_, index) => {
+            // Show all options in a more compact format
+            markets.forEach((market, index) => {
+                const name = market.name || `Market #${index + 1}`;
                 marketButtons.push([
-                    { text: `Supply to Market #${index + 1}`, callback_data: `s_${index}` },
-                    { text: `Borrow from Market #${index + 1}`, callback_data: `b_${index}` }
-                ]);
-                marketButtons.push([
-                    { text: `Withdraw from Market #${index + 1}`, callback_data: `w_${index}` },
-                    { text: `Repay to Market #${index + 1}`, callback_data: `r_${index}` }
+                    { text: `${name} - Supply`, callback_data: `s_${index}` },
+                    { text: `${name} - Borrow`, callback_data: `b_${index}` }
                 ]);
             });
         }
-
-        console.log("Buttons created");
 
         // Add back button
         marketButtons.push([{ text: '🔙 Back to Menu', callback_data: 'menu' }]);
 
-        console.log("Bot sending message");
+        await this.bot.sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: marketButtons }
+        });
+    }
 
-        // Set initial action if provided
-        if (initialAction) {
-            userStates.set(chatId, initialAction);
+    async sendTransactionForm(
+        chatId: number,
+        action: UserState,
+        market: Market
+    ): Promise<void> {
+        // Format better titles for actions
+        const actionTitles = {
+            'supply': 'Supply',
+            'withdraw': 'Withdraw',
+            'borrow': 'Borrow',
+            'repay': 'Repay'
+        };
+
+        const name = market.name || market.id;
+        const actionTitle = action && actionTitles[action as keyof typeof actionTitles]
+            ? actionTitles[action as keyof typeof actionTitles]
+            : 'Unknown Action';
+        const aprType = action === 'supply' || action === 'withdraw' ? 'Supply' : 'Borrow';
+        const aprValue = action === 'supply' || action === 'withdraw' ? market.supplyApr : market.borrowApr;
+
+        let message = `*${actionTitle} Tokens to ${name}*\n\n`;
+        message += `Market ID: \`${market.id}\`\n`;
+        message += `Coin Address: \`${market.coinAddress}\`\n`;
+
+        if (action === 'supply' || action === 'borrow') {
+            message += `Current ${aprType} APR: ${aprValue}%\n\n`;
         }
 
-        bot.sendMessage(
-            chatId,
-            message,
-            {
-                reply_markup: {
-                    inline_keyboard: marketButtons
-                }
+        if (action) {
+            message += `Please enter the amount you wish to ${action.toLowerCase()}:`;
+        } else {
+            message += `Action is not specified. Please try again.`;
+        }
+
+        await this.bot.sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 Back to Markets', callback_data: 'markets' }]
+                ]
             }
-        );
-    } catch (error) {
-        console.error('Market fetch error:', error);
-        bot.sendMessage(
+        });
+    }
+
+    async sendTransactionConfirmation(
+        chatId: number,
+        action: UserState,
+        market: Market,
+        amount: number,
+        payload: any
+    ): Promise<void> {
+        const name = market.name || market.id;
+        const actionTitle = action ? action.charAt(0).toUpperCase() + action.slice(1) : 'Unknown Action';
+
+        let message = `*${actionTitle} Transaction Confirmation*\n\n`;
+        message += `Market: ${name}\n`;
+        message += `Amount: ${amount}\n\n`;
+        message += `*Transaction Payload:*\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\``;
+
+        await this.bot.sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '✅ Confirm Transaction', callback_data: 'confirm' }],
+                    [{ text: '❌ Cancel', callback_data: 'menu' }]
+                ]
+            }
+        });
+    }
+
+    async sendTransaction(payload: any): Promise<string> {
+        try {
+            console.log("Transaction Started");
+            const config = new AptosConfig({ network: Network.TESTNET });
+            const aptos = new Aptos(config);
+            const account = await aptos.deriveAccountFromPrivateKey({
+                privateKey: new Ed25519PrivateKey(
+                    PrivateKey.formatPrivateKey(
+                        '0xab9349629b525a0f8db2b436793f533dab2175d95db360b84ff9d4ddfb50b0c2',
+                        PrivateKeyVariants.Ed25519
+                    )
+                ),
+            });
+            console.log("Account address:", account.accountAddress.toString());
+            console.log("Account derived:", account);
+
+            console.log("Payload" , payload);
+            const txn = await aptos.transaction.build.simple({
+                sender: account.accountAddress,
+                data: payload,
+            });
+
+            console.log("Transaction built:", txn);
+
+            const committedTxn = await aptos.signAndSubmitTransaction({
+                signer:account,
+                transaction:txn,
+            });
+            
+            console.log("Transaction submitted:", committedTxn);
+            const executedTransaction = await aptos.waitForTransaction({
+                transactionHash: committedTxn.hash,
+            });
+            return executedTransaction.hash;
+        } catch (error) {
+            console.error('Error sending transaction:', error);
+            throw new Error('Failed to send transaction');
+        }
+    }
+
+    async sendErrorMessage(chatId: number, errorMessage: string): Promise<void> {
+        await this.bot.sendMessage(chatId, `❌ *Error:* ${errorMessage}`, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]]
+            }
+        });
+    }
+
+    async sendHelpMessage(chatId: number): Promise<void> {
+        const helpMessage = "*Plutus Move Bot Help*\n\n" +
+            "This bot allows you to interact with the Plutus protocol on the Move blockchain.\n\n" +
+            "*Available Commands:*\n\n" +
+            "• */start* - Show the main menu\n" +
+            "• */help* - Show this help message\n\n" +
+            "*Main Features:*\n\n" +
+            "• *Connect Wallet* - Link your Move blockchain wallet\n" +
+            "• *Show Markets* - View all available markets\n" +
+            "• *Supply* - Provide liquidity to earn interest\n" +
+            "• *Withdraw* - Remove your supplied assets\n" +
+            "• *Borrow* - Take a loan using your collateral\n" +
+            "• *Repay* - Pay back borrowed assets\n\n" +
+            "*How to use:*\n\n" +
+            "1. Connect your wallet\n" +
+            "2. Select an action from the menu\n" +
+            "3. Choose a market\n" +
+            "4. Enter the amount\n" +
+            "5. Confirm the transaction\n\n" +
+            "For more information, visit our website or contact support.";
+
+        await this.bot.sendMessage(chatId, helpMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]]
+            }
+        });
+    }
+
+    async sendWalletConnectPrompt(chatId: number): Promise<void> {
+        await this.bot.sendMessage(
             chatId,
-            'Error fetching market data. Please try again later.',
+            "*Connect your Wallet*\n\nPlease enter your Move blockchain wallet address to connect it to the bot:",
             {
+                parse_mode: 'Markdown',
                 reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]]
+                    inline_keyboard: [[{ text: '🔙 Cancel', callback_data: 'menu' }]]
                 }
             }
         );
     }
-};
 
-// Help message function with buttons
-const sendHelpMessage = (chatId: number) => {
-    const helpMessage = "Welcome to the Plutus Move Bot! Here's what you can do:\n\n" +
-        "- Show markets - Display available markets with full IDs and coin addresses\n" +
-        "- Supply tokens - Supply tokens to a market\n" +
-        "- Withdraw tokens - Withdraw your tokens\n" +
-        "- Borrow tokens - Borrow tokens from a market\n" +
-        "- Repay tokens - Repay borrowed tokens\n\n" +
-        "The process is simplified:\n" +
-        "1. Select an action from the menu\n" +
-        "2. Choose a market from the list\n" +
-        "3. Enter only the amount you wish to transact\n" +
-        "4. Confirm the transaction";
-
-    bot.sendMessage(
-        chatId,
-        helpMessage,
-        {
+    async sendSuccessMessage(chatId: number, message: string): Promise<void> {
+        await this.bot.sendMessage(chatId, `✅ *Success:* ${message}`, {
+            parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [[{ text: '🔙 Back to Menu', callback_data: 'menu' }]]
             }
+        });
+    }
+}
+
+// Main Bot class
+class PlutusBot {
+    private bot: TelegramBot;
+    private sessionManager: SessionManager;
+    private api: PlutusAPI;
+    private ui: TelegramUI;
+
+    constructor(token: string, apiUrl: string) {
+        this.bot = new TelegramBot(token, { polling: true });
+        this.sessionManager = new SessionManager();
+        this.api = new PlutusAPI(apiUrl);
+        this.ui = new TelegramUI(this.bot);
+
+        this.setupEventHandlers();
+
+        // Error handler
+        process.on('uncaughtException', (error) => {
+            console.error('Uncaught Exception:', error);
+        });
+    }
+
+    private setupEventHandlers(): void {
+        // Command handlers
+        this.bot.onText(/\/start/, this.handleStartCommand.bind(this));
+        this.bot.onText(/\/help/, this.handleHelpCommand.bind(this));
+
+        // Callback query handler
+        this.bot.on('callback_query', this.handleCallbackQuery.bind(this));
+
+        // Message handler
+        this.bot.on('message', this.handleMessage.bind(this));
+    }
+
+    private async handleStartCommand(msg: TelegramBot.Message): Promise<void> {
+        const chatId = msg.chat.id;
+        const wallet = this.sessionManager.getWallet(chatId);
+        await this.ui.sendMainMenu(chatId, !!wallet);
+    }
+
+    private async handleHelpCommand(msg: TelegramBot.Message): Promise<void> {
+        const chatId = msg.chat.id;
+        await this.ui.sendHelpMessage(chatId);
+    }
+
+    private async handleCallbackQuery(callbackQuery: TelegramBot.CallbackQuery): Promise<void> {
+        const chatId = callbackQuery.message?.chat.id;
+        if (!chatId) {
+            console.error('Callback query message or chat ID is undefined.');
+            return;
         }
-    );
-};
 
-// Error handler
-process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error);
-});
+        const data = callbackQuery.data;
+        if (!data) {
+            console.error('Callback data is undefined.');
+            return;
+        }
 
-console.log('Bot is running with interactive buttons...');
+        console.log(`Received callback data: ${data}`);
+
+        // Acknowledge the button click
+        try {
+            await this.bot.answerCallbackQuery(callbackQuery.id);
+        } catch (error) {
+            console.error('Error answering callback query:', error);
+        }
+
+        // Process the callback data
+        await this.processCallbackData(chatId, data);
+    }
+
+    private async processCallbackData(chatId: number, data: string): Promise<void> {
+        try {
+            // Standard menu actions
+            if (data === 'markets') {
+                await this.handleShowMarkets(chatId);
+            }
+            else if (data === 'supply' || data === 'withdraw' || data === 'borrow' || data === 'repay') {
+                await this.handleShowMarkets(chatId, data as UserState);
+            }
+            else if (data === 'menu') {
+                this.sessionManager.resetSession(chatId);
+                const wallet = this.sessionManager.getWallet(chatId);
+                await this.ui.sendMainMenu(chatId, !!wallet);
+            }
+            else if (data === 'help') {
+                await this.ui.sendHelpMessage(chatId);
+            }
+            else if (data === 'connect_wallet') {
+                this.sessionManager.setState(chatId, 'connect_wallet');
+                await this.ui.sendWalletConnectPrompt(chatId);
+            }
+            else if (data === 'wallet') {
+                await this.handleWalletInfo(chatId);
+            }
+            // Market-specific actions
+            else if (data.startsWith('s_') || data.startsWith('b_') ||
+                data.startsWith('w_') || data.startsWith('r_')) {
+                await this.handleMarketSelection(chatId, data);
+            }
+            else if (data === 'confirm') {
+                await this.handleTransactionConfirmation(chatId);
+            }
+            else {
+                console.log(`Unknown callback data: ${data}`);
+            }
+        } catch (error) {
+            console.error('Error processing callback:', error);
+            await this.ui.sendErrorMessage(chatId, 'An unexpected error occurred. Please try again.');
+        }
+    }
+
+    private async handleMessage(msg: TelegramBot.Message): Promise<void> {
+        if (!msg.text || msg.text.startsWith('/')) {
+            return;
+        }
+
+        const chatId = msg.chat.id;
+        const text = msg.text.trim();
+        const state = this.sessionManager.getState(chatId);
+
+        if (!state) {
+            return;
+        }
+
+        try {
+            if (state === 'connect_wallet') {
+                await this.handleWalletConnection(chatId, text);
+            } else if (state === 'supply' || state === 'withdraw' || state === 'borrow' || state === 'repay') {
+                await this.handleAmountInput(chatId, text, state);
+            }
+        } catch (error) {
+            console.error('Error handling message:', error);
+            await this.ui.sendErrorMessage(chatId, 'An unexpected error occurred. Please try again.');
+        }
+    }
+
+    private async handleWalletConnection(chatId: number, walletAddress: string): Promise<void> {
+        // Basic validation - in real app, would need stronger validation
+        if (!walletAddress || walletAddress.length < 10) {
+            await this.ui.sendErrorMessage(chatId, 'Please enter a valid wallet address.');
+            return;
+        }
+
+        // Store wallet address
+        this.sessionManager.setWallet(chatId, walletAddress);
+        this.sessionManager.setState(chatId, null);
+
+        await this.ui.sendSuccessMessage(
+            chatId,
+            `Your wallet has been connected successfully!\nAddress: ${walletAddress}`
+        );
+
+        // Show main menu after connecting wallet
+        await this.ui.sendMainMenu(chatId, true);
+    }
+
+    private async handleWalletInfo(chatId: number): Promise<void> {
+        const walletAddress = this.sessionManager.getWallet(chatId);
+
+        if (!walletAddress) {
+            this.sessionManager.setState(chatId, 'connect_wallet');
+            await this.ui.sendWalletConnectPrompt(chatId);
+            return;
+        }
+
+        try {
+            const positions = await this.api.getUserPositions(walletAddress);
+            await this.ui.sendWalletInfo(chatId, walletAddress, positions);
+        } catch (error) {
+            console.error('Error fetching wallet info:', error);
+            await this.ui.sendWalletInfo(chatId, walletAddress);
+        }
+    }
+
+    private async handleShowMarkets(chatId: number, initialAction: UserState = null): Promise<void> {
+        try {
+            // Check if wallet is connected for supply/withdraw/borrow/repay actions
+            if (initialAction && !this.sessionManager.getWallet(chatId)) {
+                this.sessionManager.setState(chatId, 'connect_wallet');
+                await this.ui.sendErrorMessage(
+                    chatId,
+                    `You need to connect your wallet first to ${initialAction} tokens.`
+                );
+                await this.ui.sendWalletConnectPrompt(chatId);
+                return;
+            }
+
+            const markets = await this.api.getMarkets();
+
+            if (!markets || markets.length === 0) {
+                await this.ui.sendErrorMessage(chatId, 'No markets available at the moment.');
+                return;
+            }
+
+            // Enhance market data with names if not provided by API
+            const enhancedMarkets = markets.map((market, index) => ({
+                ...market,
+                name: market.name || `Market ${index + 1}`,
+                symbol: market.symbol || '',
+            }));
+
+            // Store markets for later use
+            this.sessionManager.setMarkets(chatId, enhancedMarkets);
+
+            // Set initial action if provided
+            if (initialAction) {
+                this.sessionManager.setState(chatId, initialAction);
+            }
+
+            await this.ui.sendMarketsList(chatId, enhancedMarkets, initialAction);
+        } catch (error) {
+            console.error('Error showing markets:', error);
+            await this.ui.sendErrorMessage(chatId, 'Failed to fetch market data. Please try again later.');
+        }
+    }
+
+    private async handleMarketSelection(chatId: number, data: string): Promise<void> {
+        const actionCode = data.charAt(0);
+        const marketIndex = parseInt(data.substring(2));
+        const markets = this.sessionManager.getMarkets(chatId);
+
+        if (!markets || marketIndex >= markets.length) {
+            await this.ui.sendErrorMessage(chatId, 'Invalid market selection. Please try again.');
+            return;
+        }
+
+        const selectedMarket = markets[marketIndex];
+        this.sessionManager.setCurrentMarket(chatId, selectedMarket);
+
+        // Map action code to state
+        const actionMap: { [key: string]: UserState } = {
+            's': 'supply',
+            'b': 'borrow',
+            'w': 'withdraw',
+            'r': 'repay'
+        };
+
+        const action = actionMap[actionCode];
+        if (!action) {
+            await this.ui.sendErrorMessage(chatId, 'Invalid action. Please try again.');
+            return;
+        }
+
+        this.sessionManager.setState(chatId, action);
+        await this.ui.sendTransactionForm(chatId, action, selectedMarket);
+    }
+
+    private async handleAmountInput(chatId: number, amountStr: string, state: UserState): Promise<void> {
+        // Parse and validate amount
+        const amount = parseFloat(amountStr);
+
+        if (isNaN(amount) || amount <= 0) {
+            await this.ui.sendErrorMessage(chatId, 'Please enter a valid positive number for the amount.');
+            return;
+        }
+
+        const selectedMarket = this.sessionManager.getCurrentMarket(chatId);
+        const walletAddress = this.sessionManager.getWallet(chatId);
+
+        if (!selectedMarket) {
+            await this.ui.sendErrorMessage(chatId, 'Market selection error. Please try again.');
+            return;
+        }
+
+        if (!walletAddress) {
+            this.sessionManager.setState(chatId, 'connect_wallet');
+            await this.ui.sendWalletConnectPrompt(chatId);
+            return;
+        }
+
+        try {
+            // Store amount for confirmation step
+            this.sessionManager.setAmount(chatId, amount);
+
+            // Generate transaction payload
+            const response = await this.api.createTransactionPayload(
+                state,
+                selectedMarket.coinAddress,
+                selectedMarket.id,
+                amount,
+                walletAddress
+            );
+            console.log("payload:", response.payload);
+            // Store payload for confirmation step
+            this.sessionManager.setPayload(chatId, response.payload);
+
+            await this.ui.sendTransactionConfirmation(
+                chatId,
+                state,
+                selectedMarket,
+                amount,
+                response.payload
+            );
+        } catch (error) {
+            console.error('Transaction error:', error);
+            await this.ui.sendErrorMessage(
+                chatId,
+                `Error creating ${state} transaction. Please try again later.`
+            );
+        }
+    }
+
+    private async handleTransactionConfirmation(chatId: number): Promise<void> {
+        console.log("Transaction Confirmation Started");
+        const state = this.sessionManager.getState(chatId);
+        const market = this.sessionManager.getCurrentMarket(chatId);
+        const amount = this.sessionManager.getAmount(chatId);
+        const payload = this.sessionManager.getPayload(chatId);
+        console.log("Payload:", payload);
+        if (!state || !market || !amount || !payload) {
+            await this.ui.sendErrorMessage(chatId, 'Transaction details missing. Please try again.');
+            return;
+        }
+
+        try {
+            // Submit the transaction to the blockchain
+            const txHash = await this.ui.sendTransaction(payload);
+
+            await this.ui.sendSuccessMessage(
+                chatId,
+                `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}`
+            );
+
+            // Reset user state
+            this.sessionManager.resetSession(chatId);
+        } catch (error) {
+            console.error('Transaction submission error:', error);
+            await this.ui.sendErrorMessage(
+                chatId,
+                'Failed to submit transaction. Please try again later.'
+            );
+        }
+    }
+}
+
+// Run the bot
+try {
+    const bot = new PlutusBot(BOT_TOKEN, API_URL);
+    console.log('Plutus Move Telegram Bot is running...');
+} catch (error) {
+    console.error('Failed to start the bot:', error);
+    process.exit(1);
+}
