@@ -7,6 +7,7 @@ import { PrivyProvider } from "@privy-io/react-auth";
 import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 import ErrorBoundary from "./ErrorBoundary.tsx";
 import { Toaster } from "sonner";
+import { OCConnect } from "@opencampus/ocid-connect-js";
 import { BrowserRouter } from "react-router";
 import { AptosWalletAdapterProvider } from "@aptos-labs/wallet-adapter-react";
 
@@ -24,7 +25,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
       <PrivyProvider
-        appId="cm8uzk1ce01umghbgnzuxmqn5"
+        appId="cm7loig14030by9g896wob3gm"
         config={{
           externalWallets: {
             solana: {
@@ -47,12 +48,14 @@ createRoot(document.getElementById("root")!).render(
           },
         }}
       >
+        <OCConnect opts={opts} sandboxMode={true}>
           <BrowserRouter>
             <AptosWalletAdapterProvider>
               <App />
             </AptosWalletAdapterProvider>
 
           </BrowserRouter>
+        </OCConnect>
 
         <Toaster />
       </PrivyProvider>

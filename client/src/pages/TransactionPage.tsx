@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Market } from '../lib/types';
 import { getMarkets } from '../apiClient';
 import { toast } from 'sonner'
@@ -43,8 +43,8 @@ const TradingPage = () => {
         <div className="min-h-screen bg-background">
             <main className="container mx-auto p-4 space-y-8">
                 <div className="flex flex-col gap-2">
-                    <h1 className="text-4xl font-bold tracking-tight">Echelon Markets</h1>
-                    <p className="text-muted-foreground">View and interact with available Echelon Markets</p>
+                    <h1 className="text-4xl font-bold tracking-tight">Trading Markets</h1>
+                    <p className="text-muted-foreground">View and interact with available trading markets</p>
                 </div>
 
                 {loading ? (
@@ -55,7 +55,7 @@ const TradingPage = () => {
                     <>
                         <section>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {markets && markets.map((market) => (
+                                {markets.map((market) => (
                                     <MarketCard
                                         key={market.id}
                                         market={market}

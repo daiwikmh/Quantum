@@ -1,4 +1,4 @@
-const API_URL = 'https://plutus-move.onrender.com';
+const API_URL = 'http://localhost:3001';
 
 export const addUserToDatabase = async (user: any) => {
     try {

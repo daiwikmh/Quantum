@@ -5,6 +5,7 @@ import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import truncateAddress from "../../lib/utils";
 
+
 interface SendTransactionDialogProps {
     open: boolean;
     setOpen: (open: boolean) => void;
@@ -28,29 +29,29 @@ export const SendTransactionDialog = ({
 }: SendTransactionDialogProps) => {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogContent className="bg-white border-2 border-gray-200 shadow-xl rounded-2xl sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                    <DialogTitle className="text-2xl font-bold text-gray-900 font-montserrat">Send Transaction</DialogTitle>
-                    <DialogDescription className="text-gray-600">
+                    <DialogTitle className="text-2xl font-bold">Send Transaction</DialogTitle>
+                    <DialogDescription className="text-muted-foreground">
                         Send ETH to another wallet address. Please verify all details before confirming.
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="grid gap-6 py-4">
                     <div className="flex flex-col gap-2">
-                        <Label className="text-sm font-medium text-gray-700">From</Label>
-                        <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-100">
-                            <div className="h-10 w-10 rounded-xl bg-black flex items-center justify-center">
-                                <Wallet className="h-5 w-5 text-white" />
+                        <Label className="text-sm font-medium">From</Label>
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted">
+                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                <Wallet className="h-4 w-4 text-primary" />
                             </div>
-                            <span className="font-mono text-sm text-gray-900">
+                            <span className="font-mono text-sm">
                                 {truncateAddress(selectedWallet?.address || "")}
                             </span>
                         </div>
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="destination" className="text-sm font-medium text-gray-700">
+                        <Label htmlFor="destination" className="text-sm font-medium">
                             Destination Address
                         </Label>
                         <Input
@@ -58,12 +59,12 @@ export const SendTransactionDialog = ({
                             placeholder="0x..."
                             value={destinationAddress}
                             onChange={(e) => setDestinationAddress(e.target.value)}
-                            className="font-mono border-2 border-gray-200 rounded-xl h-11"
+                            className="font-mono"
                         />
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="amount" className="text-sm font-medium text-gray-700">
+                        <Label htmlFor="amount" className="text-sm font-medium">
                             Amount (ETH)
                         </Label>
                         <div className="relative">
@@ -73,30 +74,29 @@ export const SendTransactionDialog = ({
                                 placeholder="0.0"
                                 value={amount}
                                 onChange={(e) => setAmount(e.target.value)}
-                                className="pr-12 border-2 border-gray-200 rounded-xl h-11"
+                                className="pr-12"
                             />
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-600 font-medium">
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                                 ETH
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <DialogFooter className="gap-3">
+                <DialogFooter>
                     <Button
-                        variant="outline"
+                        variant="ghost"
                         onClick={() => {
                             setOpen(false);
                             setDestinationAddress("");
                             setAmount("");
                         }}
-                        className="rounded-xl border-2 border-gray-200 hover:bg-gray-100 hover:text-gray-900 h-11 px-6"
                     >
                         Cancel
                     </Button>
                     <Button
                         onClick={sendTransaction}
-                        className="rounded-xl bg-black hover:bg-black/90 text-white h-11 px-6"
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground"
                     >
                         <Send className="w-4 h-4 mr-2" />
                         Send Transaction
@@ -105,4 +105,4 @@ export const SendTransactionDialog = ({
             </DialogContent>
         </Dialog>
     );
-}
+};

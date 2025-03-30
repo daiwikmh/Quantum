@@ -49,32 +49,34 @@ export function MainNav() {
         console.log(hash);
     }
 
+
+
     return (
-        <nav className="flex justify-between w-full px-2 z-50">
+        <nav className="flex justify-between w-full px-2">
             <div className="flex items-center space-x-6">
                 {/* Navigation items would go here */}
             </div>
 
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <button className="flex items-center space-x-2.5 px-5 py-2.5 rounded-xl border-2 border-black hover:bg-black hover:text-white transition-all font-montserrat group">
+                    <button className="flex items-center space-x-2 px-4 py-2 rounded-full border-2 border-black hover:bg-black hover:text-white transition-colors font-montserrat">
                         <WalletIcon className="h-4 w-4" />
-                        <span className="font-medium">WALLETS</span>
+                        <span>WALLETS</span>
                     </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-[380px] p-5 bg-white border-2 border-black rounded-2xl shadow-xl" align="end" sideOffset={5}>
-                    <div className="mb-5">
-                        <h3 className="font-bold text-black font-montserrat mb-3">CONNECTED WALLETS</h3>
+                <DropdownMenuContent className="w-fit p-4 border-2 border-black rounded-3xl">
+                    <div className="mb-1">
+                        <h3 className="font-bold text-black font-montserrat mb-2">CONNECTED WALLETS</h3>
                         {wallets.length > 0 ? (
-                            <div className="space-y-2.5">
+                            <div className="space-y-2">
                                 {wallets.map((wallet, index) => (
-                                    <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
-                                        <WalletIcon className="h-4 w-4 text-gray-700" />
+                                    <div key={index} className="flex items-center space-x-2 p-2 bg-gray-50 rounded-xl">
+                                        <WalletIcon className="h-4 w-4 text-black" />
                                         <div>
-                                            <p className="text-sm font-semibold font-montserrat capitalize text-gray-900">
+                                            <p className="text-sm font-medium font-montserrat capitalize">
                                                 {wallet.walletClientType} Wallet
                                             </p>
-                                            <p className="text-xs text-gray-500 font-mono mt-0.5">
+                                            <p className="text-xs text-gray-500 font-mono">
                                                 {wallet.address.slice(0, 6)}...{wallet.address.slice(-4)}
                                             </p>
                                         </div>
@@ -86,34 +88,35 @@ export function MainNav() {
                         )}
                     </div>
 
-                    <DropdownMenuItem className="mb-4 focus:bg-transparent">
-                        <WalletConnectButton />
+                    <DropdownMenuItem>
+                            <WalletConnectButton />
                     </DropdownMenuItem>
 
-                    <div className="grid grid-cols-1 gap-3">
+                    <div className="grid grid-cols-1 gap-2">
                         <DropdownMenuItem onClick={linkWallet} className="p-0 focus:bg-transparent">
-                            <Button variant="outline" className="w-full rounded-xl border-2 border-black hover:bg-black hover:text-white font-montserrat h-11">
+                            <Button variant="outline" className="w-full rounded-full border-2 border-black hover:bg-black hover:text-white font-montserrat">
                                 <LinkIcon className="h-4 w-4 mr-2" />
                                 Link Wallet
                             </Button>
                         </DropdownMenuItem>
                         
+                        
                         <DropdownMenuItem onClick={createWallet} className="p-0 focus:bg-transparent">
-                            <Button variant="outline" className="w-full rounded-xl border-2 border-black hover:bg-black hover:text-white font-montserrat h-11">
+                            <Button variant="outline" className="w-full rounded-full border-2 border-black hover:bg-black hover:text-white font-montserrat">
                                 <Plus className="h-4 w-4 mr-2" />
                                 Create Wallet
                             </Button>
                         </DropdownMenuItem>
                         
                         <DropdownMenuItem onClick={sign} className="p-0 focus:bg-transparent">
-                            <Button className="w-full rounded-xl bg-black text-white hover:bg-black/90 font-montserrat h-11">
+                            <Button className="w-full rounded-full bg-black text-white hover:bg-black/90 font-montserrat">
                                 <PenSquare className="h-4 w-4 mr-2" />
                                 Sign Message
                             </Button>
                         </DropdownMenuItem>
                         
                         <DropdownMenuItem onClick={transaction} className="p-0 focus:bg-transparent">
-                            <Button className="w-full rounded-xl bg-black text-white hover:bg-black/90 font-montserrat h-11">
+                            <Button className="w-full rounded-full bg-black text-white hover:bg-black/90 font-montserrat">
                                 <SendIcon className="h-4 w-4 mr-2" />
                                 Send Transaction
                             </Button>
@@ -124,3 +127,4 @@ export function MainNav() {
         </nav>
     )
 }
+

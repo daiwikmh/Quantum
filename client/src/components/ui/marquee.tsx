@@ -28,7 +28,7 @@ export default function Marquee() {
           <div key={outerIndex} className="flex items-center mx-8">
             {logos.map((logo, index) => (
               <div
-                key={`${outerIndex}-${index}`}
+                key={${outerIndex}-${index}}
                 className="mx-8 rounded-full border-2 border-gray-400 p-4 bg-white/5 backdrop-blur-sm hover:border-black transition-colors duration-300"
                 style={{
                   width: "120px",
@@ -40,14 +40,14 @@ export default function Marquee() {
               >
                 <img
                   src={logo}
-                  alt={`Logo ${index + 1}`}
+                  alt={Logo ${index + 1}}
                   className="w-30 h-30 object-contain rounded-full"
                 />
               </div>
             ))}
+            </motion.div>
           </div>
         ))}
-      </motion.div>
     </div>
   );
 }

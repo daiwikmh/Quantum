@@ -30,15 +30,8 @@ const WalletIcon = ({ clientType }: WalletIconProps) => {
             );
         case 'privy':
             return <Wallet2 className="w-8 h-8 text-primary" />;
-        case 'aptos':
-            return <img
-                src="https://images.seeklogo.com/logo-png/52/1/aptos-logo-png_seeklogo-527145.png"
-                alt="aptos"
-                className="w-8 h-8"
-            />
         default:
             return <CreditCard className="w-8 h-8 text-muted-foreground" />;
-
     }
 };
 
