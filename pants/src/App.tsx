@@ -1,6 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router'
 import HomeBeforeLogin from './pages/HomeBeforeLogin'
 import Profile from './pages/profile'
+import HomeAfterLogin from './pages/HomeAfterLogin';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 
 function App() {
 
