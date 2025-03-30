@@ -417,13 +417,21 @@ class TelegramUI {
                     )
                 ),
             });
+            
             console.log("Account address:", account.accountAddress.toString());
             console.log("Account derived:", account);
 
             console.log("Payload" , payload);
+
+
+            
             const txn = await aptos.transaction.build.simple({
                 sender: account.accountAddress,
-                data: payload,
+                data: {
+                    typeArguments: payload.typeArguments,
+                    functionArguments: payload.functionArguments,
+                    function: payload.function
+                  },
             });
 
             console.log("Transaction built:", txn);

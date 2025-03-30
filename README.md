@@ -1,23 +1,34 @@
 # AcehackQuantum Client
 
-A modern web application built with React, TypeScript, and Vite, featuring beautiful UI components and smooth scroll animations.
+A comprehensive blockchain trading platform built with React, TypeScript, and Vite, integrating Aptos, Echelon, and Pyth networks with Telegram and Twitter bot functionalities for seamless trading and social interactions.
 
 ![AcehackQuantum Client](./draw.png)
 
 ## Features
 
-- 🚀 Built with React + TypeScript + Vite
-- 💫 Smooth scroll animations
-- 🎨 Modern UI components
-- 📱 Responsive design
-- 🌙 Dark mode support
+- 🚀 Multi-chain Support (Aptos, Echelon, Pyth)
+- 💬 Telegram Bot Integration for Trading
+- 🐦 Twitter Bot for Social Presence
+- 📊 Real-time Trading Dashboard
+- 💫 On-chain Transaction Tracking
+- 🔐 Secure Payment Processing
+- 📱 Responsive Web Interface
+- 🌙 Dark Mode Support
+- 📈 Transaction History & Analytics
+- 🤖 Automated Trading Actions
+- 🔔 Real-time Notifications
+- 🔄 Cross-chain Operations
 
 ## Prerequisites
 
 - Node.js (v14 or higher)
 - npm or yarn
+- Telegram Account
+- Twitter Developer Account
+- Crypto Wallet (supporting Aptos, Echelon)
+- API Keys for Pyth Network
 
-## Getting Started![AcehackQuantum Client](./assets/draw.png)
+## Getting Started
 
 1. Clone the repository
 ```bash
@@ -68,6 +79,25 @@ client/
 - [TypeScript](https://www.typescriptlang.org/)
 - [Vite](https://vitejs.dev/)
 - [Tailwind CSS](https://tailwindcss.com/)
+
+## Features Detail
+### Telegram Bot
+- Execute trades directly through chat commands
+- View portfolio balance and performance
+- Set up price alerts and notifications
+- Process payments and transfers
+- View transaction history
+### Twitter Bot
+- Automated trading updates
+- Custom social presence management
+- Performance sharing
+- Community engagement features
+### Dashboard
+- Real-time portfolio tracking
+- Transaction history visualization
+- Cross-chain asset management
+- Performance analytics
+- Bot configuration interface
 
 ## Contributing
 
