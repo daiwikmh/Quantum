@@ -549,7 +549,7 @@ class TelegramUI {
                 },
             });
 
-            console.log("Transaction built:", txn);
+      console.log("Transaction built:", txn);
 
             const committedTxn = await aptos.signAndSubmitTransaction({
                 signer: account,
@@ -1065,8 +1065,11 @@ class PlutusBot {
             await this.ui.sendSuccessMessage(
                 chatId,
                 `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}\n\n✅ Your private key has been cleared from memory.`
+                `Your ${state} transaction of ${amount} tokens has been submitted successfully!\nTransaction Hash: ${txHash}\n\n✅ Your private key has been cleared from memory.`
             );
 
+            // Reset user state and explicitly clear the private key
+            this.sessionManager.clearPrivateKey(chatId);
             // Reset user state and explicitly clear the private key
             this.sessionManager.clearPrivateKey(chatId);
             this.sessionManager.resetSession(chatId);
@@ -1074,6 +1077,7 @@ class PlutusBot {
             console.error('Transaction submission error:', error);
             await this.ui.sendErrorMessage(
                 chatId,
+                `Failed to submit transaction: ${error instanceof Error ? error.message : 'Unknown error'}`
                 `Failed to submit transaction: ${error instanceof Error ? error.message : 'Unknown error'}`
             );
 
