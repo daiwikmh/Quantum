@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@aptos-labs/wallet-adapter-react": "^5.0.0",
+    "@echelonmarket/echelon-sdk": "^2.1.0",
     "@privy-io/react-auth": "^2.7.2",
     "@radix-ui/react-checkbox": "^1.1.4",
     "@radix-ui/react-dialog": "^1.1.6",
