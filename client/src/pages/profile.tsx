@@ -1,6 +1,6 @@
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useState } from "react";
-import { NetworkKey } from "../lib/fetchWalletBalance";
+import { NetworkKey } from "../lib/fetchWalletBalance"
 import { NetworkSelector } from "../components/NetworSelector";
 import { useWalletTransactions } from "../hooks/useWalletTransaction";
 import { useWalletBalances } from "../hooks/useWalletBalance";

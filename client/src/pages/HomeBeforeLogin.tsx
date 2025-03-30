@@ -1,6 +1,6 @@
 import Bento from "@/components/bento";
 import Footer from "@/components/footer";
-import { Header1 } from "@/components/header"
+import  Header1  from "@/components/header"
 import { HeroScrollDemo } from "@/components/scroll";
 import Marquee from "@/components/ui/marquee";
 
