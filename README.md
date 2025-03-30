@@ -87,11 +87,24 @@ client/
 - Set up price alerts and notifications
 - Process payments and transfers
 - View transaction history
+- Real-time market updates
+- Wallet connection and management
+- Support for multiple markets and tokens
+- Interactive command interface
+- Secure transaction signing
+
 ### Twitter Bot
 - Automated trading updates
 - Custom social presence management
 - Performance sharing
 - Community engagement features
+- Market sentiment analysis
+- Automated trade notifications
+- Portfolio performance updates
+- Price alerts and market trends
+- Integration with trading signals
+- Social trading features
+
 ### Dashboard
 - Real-time portfolio tracking
 - Transaction history visualization
